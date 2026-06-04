@@ -61,7 +61,7 @@ class SaleItem(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     sale_id = db.Column(db.Integer, db.ForeignKey('sales.id'), nullable=False)
     product_id = db.Column(db.Integer, db.ForeignKey('products.id'), nullable=False)
-    quantity = db.Column(db.Integer, nullable=False)
+    quantity = db.Column(db.Numeric(10, 3), nullable=False)
     unit_price = db.Column(db.Numeric(10, 2), nullable=False)
     total_price = db.Column(db.Numeric(10, 2), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
@@ -77,7 +77,7 @@ class SaleItem(db.Model):
             'product_id': self.product_id,
             'product_name': self.product.name if self.product else 'Unknown Product',
             'product_sku': self.product.sku if self.product else '',
-            'quantity': self.quantity,
+            'quantity': float(self.quantity),
             'unit_price': float(self.unit_price),
             'total_price': float(self.total_price),
             'created_at': self.created_at.isoformat(),

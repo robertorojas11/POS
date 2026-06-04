@@ -1,17 +1,20 @@
 import { defineStore } from 'pinia'
 import axios from 'axios'
 import { useProductsStore } from './products'
+import { dbGetAll, dbPut, dbDelete, dbPutAll } from '@/utils/indexedDb'
 
 export const useCartStore = defineStore('cart', {
   state: () => ({
     items: [],
     discount: 0.00,
+    appliedDiscount: null,
     taxRate: 0.0825,
     selectedCustomer: null,
     loading: false,
     error: null,
     isOnline: navigator.onLine,
-    offlineSalesQueue: JSON.parse(localStorage.getItem('offline_sales_queue')) || [],
+    offlineSalesQueue: [],
+    localDbLoaded: false,
     isSyncing: false
   }),
   getters: {
@@ -31,11 +34,22 @@ export const useCartStore = defineStore('cart', {
     }
   },
   actions: {
+    calculateDiscountAmount() {
+      if (!this.appliedDiscount) {
+        return
+      }
+      const val = parseFloat(this.appliedDiscount.value)
+      if (this.appliedDiscount.discount_type === 'percent') {
+        this.discount = parseFloat(((this.subtotal * val) / 100).toFixed(2))
+      } else {
+        this.discount = Math.min(this.subtotal, val)
+      }
+    },
     addToCart(product) {
       const existing = this.items.find(item => item.product_id === product.id)
       if (existing) {
         if (existing.quantity < product.stock_quantity) {
-          existing.quantity++
+          existing.quantity = parseFloat((existing.quantity + 1).toFixed(3))
         }
       } else {
         this.items.push({
@@ -44,27 +58,33 @@ export const useCartStore = defineStore('cart', {
           name: product.name,
           price: product.price,
           quantity: 1,
+          uom: product.uom || 'pieces',
           stock_available: product.stock_quantity
         })
       }
+      this.calculateDiscountAmount()
     },
     removeFromCart(productId) {
       const index = this.items.findIndex(item => item.product_id === productId)
       if (index > -1) {
         this.items.splice(index, 1)
       }
+      this.calculateDiscountAmount()
     },
     updateQuantity(productId, qty) {
       const item = this.items.find(item => item.product_id === productId)
       if (item) {
-        if (qty <= 0) {
+        const parsedQty = parseFloat(qty)
+        if (isNaN(parsedQty) || parsedQty <= 0) {
           this.removeFromCart(productId)
         } else {
-          item.quantity = Math.min(qty, item.stock_available)
+          item.quantity = parseFloat(Math.min(parsedQty, item.stock_available).toFixed(3))
         }
       }
+      this.calculateDiscountAmount()
     },
     setDiscount(discountAmount) {
+      this.appliedDiscount = null
       this.discount = Math.max(0, parseFloat(discountAmount) || 0)
     },
     selectCustomer(customer) {
@@ -73,6 +93,7 @@ export const useCartStore = defineStore('cart', {
     clearCart() {
       this.items = []
       this.discount = 0.00
+      this.appliedDiscount = null
       this.selectedCustomer = null
       this.error = null
     },
@@ -96,6 +117,15 @@ export const useCartStore = defineStore('cart', {
         this.loading = false
       }
     },
+    async loadFromLocalDb() {
+      if (this.localDbLoaded) return
+      try {
+        this.offlineSalesQueue = await dbGetAll('sales_queue')
+        this.localDbLoaded = true
+      } catch (err) {
+        console.error('Failed to load offline sales queue from IndexedDB', err)
+      }
+    },
     async checkout(paymentMethod) {
       this.loading = true
       this.error = null
@@ -113,7 +143,7 @@ export const useCartStore = defineStore('cart', {
       
       // If we are offline, save directly to offline queue
       if (!this.isOnline) {
-        const offlineSale = this.saveOfflineSale(payload)
+        const offlineSale = await this.saveOfflineSale(payload)
         this.loading = false
         return offlineSale
       }
@@ -126,7 +156,7 @@ export const useCartStore = defineStore('cart', {
         const isNetworkError = !err.response || err.message === 'Network Error' || err.code === 'ERR_NETWORK'
         if (isNetworkError) {
           console.warn('Network error during checkout, queueing transaction offline.', err)
-          const offlineSale = this.saveOfflineSale(payload)
+          const offlineSale = await this.saveOfflineSale(payload)
           return offlineSale
         } else {
           this.error = err.response?.data?.error || 'Checkout transaction failed'
@@ -136,8 +166,10 @@ export const useCartStore = defineStore('cart', {
         this.loading = false
       }
     },
-    saveOfflineSale(payload) {
+    async saveOfflineSale(payload) {
+      await this.loadFromLocalDb()
       const productsStore = useProductsStore()
+      await productsStore.loadFromLocalDb()
       const tempInvoice = `OFFLINE-INV-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`
       
       const saleItems = this.items.map(item => {
@@ -156,7 +188,11 @@ export const useCartStore = defineStore('cart', {
         }
       })
       
-      localStorage.setItem('cached_products', JSON.stringify(productsStore.products))
+      try {
+        await dbPutAll('products', productsStore.products)
+      } catch (err) {
+        console.error('Failed to update local products stock in IndexedDB', err)
+      }
       
       const offlineSale = {
         id: `offline-${Date.now()}-${Math.random()}`,
@@ -177,12 +213,17 @@ export const useCartStore = defineStore('cart', {
       }
       
       this.offlineSalesQueue.push(offlineSale)
-      localStorage.setItem('offline_sales_queue', JSON.stringify(this.offlineSalesQueue))
+      try {
+        await dbPut('sales_queue', offlineSale)
+      } catch (err) {
+        console.error('Failed to save offline sale to IndexedDB', err)
+      }
       
       this.clearCart()
       return offlineSale
     },
     async syncOfflineSales() {
+      await this.loadFromLocalDb()
       if (this.isSyncing || this.offlineSalesQueue.length === 0) return
       this.isSyncing = true
       
@@ -193,7 +234,7 @@ export const useCartStore = defineStore('cart', {
         try {
           await axios.post('/api/sales/checkout', sale.payload)
           this.offlineSalesQueue = this.offlineSalesQueue.filter(s => s.id !== sale.id)
-          localStorage.setItem('offline_sales_queue', JSON.stringify(this.offlineSalesQueue))
+          await dbDelete('sales_queue', sale.id)
           successfulCount++
         } catch (err) {
           const isNetworkError = !err.response || err.message === 'Network Error' || err.code === 'ERR_NETWORK'
@@ -203,7 +244,7 @@ export const useCartStore = defineStore('cart', {
           } else {
             console.error(`Invalid transaction skipped: ${sale.invoice_number}`, err.response?.data?.error)
             this.offlineSalesQueue = this.offlineSalesQueue.filter(s => s.id !== sale.id)
-            localStorage.setItem('offline_sales_queue', JSON.stringify(this.offlineSalesQueue))
+            await dbDelete('sales_queue', sale.id)
           }
         }
       }
@@ -214,19 +255,89 @@ export const useCartStore = defineStore('cart', {
         await productsStore.fetchProducts()
       }
     },
+    async fetchDiscounts() {
+      try {
+        const response = await axios.get('/api/sales/discounts')
+        await dbPutAll('discounts', response.data)
+        return response.data
+      } catch (err) {
+        console.error('Failed to fetch discounts from API', err)
+        return await dbGetAll('discounts')
+      }
+    },
+    async applyDiscountCode(code) {
+      this.loading = true
+      this.error = null
+      const codeCleaned = String(code || '').trim().toUpperCase()
+      if (!codeCleaned) {
+        this.appliedDiscount = null
+        this.discount = 0.00
+        this.loading = false
+        return null
+      }
+      
+      try {
+        let discountObj = null
+        if (this.isOnline) {
+          try {
+            const response = await axios.get(`/api/sales/discounts/validate/${codeCleaned}`)
+            discountObj = response.data
+            await dbPut('discounts', discountObj)
+          } catch (err) {
+            const isNetworkError = !err.response || err.message === 'Network Error' || err.code === 'ERR_NETWORK'
+            if (isNetworkError) {
+              const localDiscounts = await dbGetAll('discounts')
+              discountObj = localDiscounts.find(d => d.code === codeCleaned && d.is_active)
+            } else {
+              throw err
+            }
+          }
+        } else {
+          const localDiscounts = await dbGetAll('discounts')
+          discountObj = localDiscounts.find(d => d.code === codeCleaned && d.is_active)
+        }
+        
+        if (!discountObj) {
+          this.error = 'Invalid or inactive discount code'
+          this.appliedDiscount = null
+          this.discount = 0.00
+          return null
+        }
+        
+        this.appliedDiscount = discountObj
+        this.calculateDiscountAmount()
+        return discountObj
+      } catch (err) {
+        this.error = err.response?.data?.error || 'Invalid discount code'
+        this.appliedDiscount = null
+        this.discount = 0.00
+        return null
+      } finally {
+        this.loading = false
+      }
+    },
     initConnection() {
       this.isOnline = navigator.onLine
       
       window.addEventListener('online', () => {
         this.isOnline = true
         this.syncOfflineSales()
+        this.fetchDiscounts()
       })
       window.addEventListener('offline', () => {
         this.isOnline = false
       })
       
+      this.loadFromLocalDb().then(() => {
+        if (this.isOnline) {
+          this.syncOfflineSales()
+          this.fetchDiscounts()
+        }
+      })
+      
       // Periodic check
       setInterval(async () => {
+        await this.loadFromLocalDb()
         if (this.offlineSalesQueue.length > 0) {
           try {
             const response = await axios.get('/api/auth/me')

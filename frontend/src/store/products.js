@@ -1,43 +1,49 @@
 import { defineStore } from 'pinia'
 import axios from 'axios'
+import { dbGetAll, dbPutAll, dbPut } from '@/utils/indexedDb'
 
 export const useProductsStore = defineStore('products', {
   state: () => ({
-    products: JSON.parse(localStorage.getItem('cached_products')) || [],
-    categories: JSON.parse(localStorage.getItem('cached_categories')) || [],
+    products: [],
+    categories: [],
     loading: false,
-    error: null
+    error: null,
+    localDbLoaded: false
   }),
   actions: {
+    async loadFromLocalDb() {
+      if (this.localDbLoaded) return
+      try {
+        this.products = await dbGetAll('products')
+        this.categories = await dbGetAll('categories')
+        this.localDbLoaded = true
+      } catch (err) {
+        console.error('Failed to load products from IndexedDB', err)
+      }
+    },
     async fetchProducts(searchParams = {}) {
       this.loading = true
+      await this.loadFromLocalDb()
       try {
         const response = await axios.get('/api/products', { params: searchParams })
         this.products = response.data
-        localStorage.setItem('cached_products', JSON.stringify(response.data))
+        await dbPutAll('products', response.data)
         return this.products
       } catch (err) {
         this.error = 'Failed to load products'
-        const cached = localStorage.getItem('cached_products')
-        if (cached) {
-          this.products = JSON.parse(cached)
-        }
         return this.products
       } finally {
         this.loading = false
       }
     },
     async fetchCategories() {
+      await this.loadFromLocalDb()
       try {
         const response = await axios.get('/api/products/categories')
         this.categories = response.data
-        localStorage.setItem('cached_categories', JSON.stringify(response.data))
+        await dbPutAll('categories', response.data)
       } catch (err) {
         this.error = 'Failed to load categories'
-        const cached = localStorage.getItem('cached_categories')
-        if (cached) {
-          this.categories = JSON.parse(cached)
-        }
       }
     },
     async searchByBarcode(barcode) {
@@ -46,7 +52,7 @@ export const useProductsStore = defineStore('products', {
         const response = await axios.get(`/api/products/barcode/${barcode}`)
         return response.data
       } catch (err) {
-        // Offline search fallback
+        await this.loadFromLocalDb()
         const localProduct = this.products.find(p => p.barcode === barcode || p.sku === barcode)
         if (localProduct) return localProduct
         return null
@@ -59,8 +65,7 @@ export const useProductsStore = defineStore('products', {
       try {
         const response = await axios.post('/api/products', productData)
         this.products.push(response.data)
-        // Refresh local cache
-        localStorage.setItem('cached_products', JSON.stringify(this.products))
+        await dbPut('products', response.data)
         return response.data
       } catch (err) {
         this.error = err.response?.data?.error || 'Failed to create product'
@@ -77,7 +82,7 @@ export const useProductsStore = defineStore('products', {
         if (index > -1) {
           this.products[index] = response.data
         }
-        localStorage.setItem('cached_products', JSON.stringify(this.products))
+        await dbPut('products', response.data)
         return response.data
       } catch (err) {
         this.error = err.response?.data?.error || 'Failed to update product'

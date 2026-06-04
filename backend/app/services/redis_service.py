@@ -3,19 +3,19 @@ from app.extensions import redis_client
 
 class RedisService:
     @staticmethod
-    def set_cached_products(products_list):
+    def set_cached_products(products_list, terminal_id="default"):
         """Cache the list of active products for rapid autocomplete search."""
         try:
-            redis_client.set("pos:products:cache", json.dumps(products_list), ex=600)  # cache for 10 minutes
+            redis_client.set(f"pos:products:cache:{terminal_id}", json.dumps(products_list), ex=600)  # cache for 10 minutes
             return True
         except Exception:
             return False
 
     @staticmethod
-    def get_cached_products():
+    def get_cached_products(terminal_id="default"):
         """Retrieve cached active products."""
         try:
-            data = redis_client.get("pos:products:cache")
+            data = redis_client.get(f"pos:products:cache:{terminal_id}")
             if data:
                 return json.loads(data)
         except Exception:
@@ -23,12 +23,29 @@ class RedisService:
         return None
 
     @staticmethod
-    def invalidate_products_cache():
+    def invalidate_products_cache(terminal_id=None):
         """Delete products cache when product details or stocks change."""
         try:
-            redis_client.delete("pos:products:cache")
+            if terminal_id:
+                redis_client.delete(f"pos:products:cache:{terminal_id}")
+            else:
+                pattern = "pos:products:cache:*"
+                keys = redis_client.keys(pattern)
+                if keys:
+                    redis_client.delete(*keys)
+            # Trigger catalog reload event for SSE client stream
+            RedisService.publish_catalog_invalidate()
         except Exception:
             pass
+
+    @staticmethod
+    def publish_catalog_invalidate():
+        """Publish a catalog invalidate event for active client devices."""
+        try:
+            redis_client.publish("pos:catalog:events", json.dumps({"event": "invalidate"}))
+            return True
+        except Exception:
+            return False
 
     @staticmethod
     def save_suspended_cart(cashier_id, cart_id, cart_data):

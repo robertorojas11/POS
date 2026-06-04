@@ -56,7 +56,7 @@
           @click="addToCart(prod)"
         >
           <div class="prod-badge" :class="prod.stock_quantity > 5 ? 'in' : 'low'" v-if="prod.stock_quantity > 0">
-            Qty: {{ prod.stock_quantity }}
+            {{ prod.stock_quantity }} {{ prod.uom }}
           </div>
           <div class="prod-badge out" v-else>OUT</div>
           
@@ -113,9 +113,17 @@
           
           <div class="item-right">
             <div class="qty-controls">
-              <button class="qty-btn" @click="cartStore.updateQuantity(item.product_id, item.quantity - 1)">-</button>
-              <span class="qty-val">{{ item.quantity }}</span>
-              <button class="qty-btn" @click="cartStore.updateQuantity(item.product_id, item.quantity + 1)">+</button>
+              <button class="qty-btn" @click="cartStore.updateQuantity(item.product_id, item.quantity - (item.uom && item.uom !== 'pieces' ? 0.1 : 1))">-</button>
+              <input 
+                type="number" 
+                :value="item.quantity" 
+                @input="e => cartStore.updateQuantity(item.product_id, e.target.value)"
+                class="qty-input"
+                :step="item.uom && item.uom !== 'pieces' ? '0.001' : '1'"
+                min="0.001"
+              />
+              <span class="qty-uom-label">{{ item.uom }}</span>
+              <button class="qty-btn" @click="cartStore.updateQuantity(item.product_id, item.quantity + (item.uom && item.uom !== 'pieces' ? 0.1 : 1))">+</button>
             </div>
             <span class="item-total">${{ (item.price * item.quantity).toFixed(2) }}</span>
           </div>
@@ -144,6 +152,40 @@
             :max="cartStore.subtotal"
             step="0.01"
           />
+        </div>
+
+        <div class="promo-code-container">
+          <div class="summary-row promo-row">
+            <span>Promo Code</span>
+            <div class="promo-input-group">
+              <input 
+                type="text" 
+                v-model="promoCode" 
+                placeholder="Enter code" 
+                class="promo-input"
+                :disabled="cartStore.loading"
+                @keyup.enter="handleApplyPromo"
+              />
+              <button 
+                type="button" 
+                @click="handleApplyPromo" 
+                class="promo-btn"
+                :disabled="cartStore.loading || !promoCode.trim()"
+              >
+                Apply
+              </button>
+            </div>
+          </div>
+          <div v-if="cartStore.appliedDiscount" class="applied-discount-info">
+            <span class="discount-badge">
+              🏷️ {{ cartStore.appliedDiscount.code }} 
+              ({{ cartStore.appliedDiscount.discount_type === 'percent' ? cartStore.appliedDiscount.value + '%' : '$' + cartStore.appliedDiscount.value }})
+              <button @click="handleRemovePromo" class="remove-promo-btn" title="Remove promo">&times;</button>
+            </span>
+          </div>
+          <div v-if="promoError" class="promo-error-text">
+            {{ promoError }}
+          </div>
         </div>
         <div class="summary-row">
           <span>Tax (8.25%)</span>
@@ -326,6 +368,8 @@ const loading = ref(false)
 const searchQuery = ref('')
 const barcodeQuery = ref('')
 const discountInput = ref(0)
+const promoCode = ref('')
+const promoError = ref('')
 
 // Modal states
 const showCheckoutModal = ref(false)
@@ -387,6 +431,26 @@ const updateDiscount = () => {
   cartStore.setDiscount(discountInput.value)
 }
 
+const handleApplyPromo = async () => {
+  promoError.value = ''
+  if (!promoCode.value.trim()) return
+  
+  const discountObj = await cartStore.applyDiscountCode(promoCode.value)
+  if (discountObj) {
+    discountInput.value = cartStore.discount
+    promoCode.value = ''
+  } else {
+    promoError.value = cartStore.error || 'Invalid discount code'
+  }
+}
+
+const handleRemovePromo = () => {
+  cartStore.setDiscount(0)
+  discountInput.value = 0
+  promoCode.value = ''
+  promoError.value = ''
+}
+
 // Checkout Modal Actions
 const openCheckoutModal = () => {
   paymentMethod.value = 'cash'
@@ -409,6 +473,8 @@ const submitPayment = async () => {
     alert(`Checkout Completed! Invoice: ${sale.invoice_number}`)
     showCheckoutModal.value = false
     discountInput.value = 0
+    promoCode.value = ''
+    promoError.value = ''
     await productsStore.fetchProducts() // refresh stock levels
     filterProducts()
   } else {
@@ -423,6 +489,8 @@ const suspendCurrentCart = async () => {
   if (ok) {
     alert('Cart suspended successfully')
     discountInput.value = 0
+    promoCode.value = ''
+    promoError.value = ''
   }
 }
 
@@ -843,6 +911,96 @@ onMounted(async () => {
   font-family: inherit;
 }
 
+.promo-code-container {
+  margin-top: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.promo-row {
+  align-items: center !important;
+}
+
+.promo-input-group {
+  display: flex;
+  gap: 8px;
+}
+
+.promo-input {
+  width: 110px;
+  background-color: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: #fff;
+  padding: 4px 8px;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  font-family: inherit;
+}
+
+.promo-input::placeholder {
+  color: var(--text-muted);
+  text-transform: none;
+}
+
+.promo-btn {
+  background-color: var(--accent-primary);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 4px 10px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.promo-btn:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.promo-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.applied-discount-info {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 6px;
+}
+
+.discount-badge {
+  background-color: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.2);
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.remove-promo-btn {
+  background: transparent;
+  border: none;
+  color: #ef4444;
+  font-size: 1rem;
+  font-weight: bold;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+}
+
+.promo-error-text {
+  color: var(--accent-danger);
+  font-size: 0.75rem;
+  text-align: right;
+  margin-top: 4px;
+}
+
 .total-row {
   font-size: 1.25rem;
   font-weight: 700;
@@ -1025,4 +1183,33 @@ onMounted(async () => {
 .s-actions { display: flex; gap: 8px; }
 .sm-btn { padding: 6px 12px; font-size: 0.8rem; }
 .empty-text { text-align: center; color: var(--text-muted); padding: 20px 0; }
+
+.qty-input {
+  width: 65px;
+  background-color: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: #fff;
+  text-align: center;
+  padding: 4px 6px;
+  font-family: inherit;
+  font-size: 0.9rem;
+}
+
+.qty-input::-webkit-outer-spin-button,
+.qty-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.qty-uom-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-weight: 500;
+  text-transform: uppercase;
+  margin-left: 2px;
+  margin-right: 2px;
+  min-width: 20px;
+  text-align: center;
+}
 </style>

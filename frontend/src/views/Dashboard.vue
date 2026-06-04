@@ -44,6 +44,55 @@
     <div class="main-sections" v-if="!loading">
       <!-- Quick Actions -->
       <div class="section-left">
+        <!-- Live Cashier Shifts Panel -->
+        <div v-if="isAdminOrManager" class="pos-card active-shifts-panel border-indigo" style="margin-bottom: 30px;">
+          <div class="panel-header">
+            <h3>⚡ Live Cashier Drawers</h3>
+            <span class="badge badge-success" v-if="activeShifts.length">{{ activeShifts.length }} Active</span>
+            <span class="badge badge-secondary" v-else>No Active Shifts</span>
+          </div>
+          
+          <div class="table-container">
+            <table class="report-table" v-if="activeShifts.length">
+              <thead>
+                <tr>
+                  <th>Cashier</th>
+                  <th>Terminal</th>
+                  <th>Store Location</th>
+                  <th class="text-right">Drawer Cash</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="shift in activeShifts" :key="shift.id" :class="{ 'warning-row': shift.expected_cash > 1000 }">
+                  <td>
+                    <div class="cashier-cell">
+                      <span class="cashier-name font-bold">{{ shift.cashier_name }}</span>
+                      <span class="shift-time text-muted">Started {{ formatTime(shift.start_time) }}</span>
+                    </div>
+                  </td>
+                  <td><code>{{ shift.terminal_id }}</code></td>
+                  <td>{{ shift.store_location }}</td>
+                  <td class="text-right font-bold" :class="{ 'text-danger animate-pulse': shift.expected_cash > 1000 }">
+                    ${{ shift.expected_cash.toFixed(2) }}
+                  </td>
+                  <td>
+                    <span v-if="shift.expected_cash > 1000" class="alert-badge exceed">
+                      ⚠️ Drop Required
+                    </span>
+                    <span v-else class="alert-badge normal">
+                      ✓ Healthy
+                    </span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+            <div class="empty-state" v-else>
+              <p>All cashier terminals are currently closed.</p>
+            </div>
+          </div>
+        </div>
+
         <div class="pos-card quick-actions">
           <h3>Quick Terminal Actions</h3>
           <div class="btn-group">
@@ -119,8 +168,11 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import axios from 'axios'
+import { useAuthStore } from '@/store/auth'
+
+const authStore = useAuthStore()
 
 const stats = ref({
   today_revenue: 0.00,
@@ -130,19 +182,31 @@ const stats = ref({
 })
 const recentSales = ref([])
 const lowStockList = ref([])
+const activeShifts = ref([])
 const loading = ref(true)
+
+const isAdminOrManager = computed(() => ['admin', 'manager'].includes(authStore.user?.role))
 
 const loadDashboardData = async () => {
   loading.value = true
   try {
-    const [statsRes, historyRes, lowStockRes] = await Promise.all([
+    const requests = [
       axios.get('/api/reports/dashboard'),
       axios.get('/api/sales/history?limit=8'),
       axios.get('/api/reports/low-stock')
-    ])
-    stats.value = statsRes.data
-    recentSales.value = historyRes.data
-    lowStockList.value = lowStockRes.data
+    ]
+    if (isAdminOrManager.value) {
+      requests.push(axios.get('/api/sales/shifts/active-all'))
+    }
+    
+    const results = await Promise.all(requests)
+    stats.value = results[0].data
+    recentSales.value = results[1].data
+    lowStockList.value = results[2].data
+    
+    if (isAdminOrManager.value && results[3]) {
+      activeShifts.value = results[3].data
+    }
   } catch (err) {
     console.error('Failed to load dashboard data', err)
   } finally {
@@ -414,5 +478,71 @@ onMounted(() => {
 
 @keyframes spin {
   to { transform: rotate(360deg); }
+}
+
+.badge-success {
+  background-color: rgba(16, 185, 129, 0.15);
+  color: var(--accent-success);
+  border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+.badge-secondary {
+  background-color: var(--bg-tertiary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+}
+
+.cashier-cell {
+  display: flex;
+  flex-direction: column;
+}
+
+.shift-time {
+  font-size: 0.75rem;
+}
+
+.alert-badge {
+  font-size: 0.75rem;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.alert-badge.exceed {
+  background-color: rgba(239, 68, 68, 0.15);
+  color: var(--accent-danger);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  animation: pulse-border-exceed 1.5s infinite alternate;
+}
+
+.alert-badge.normal {
+  background-color: rgba(16, 185, 129, 0.15);
+  color: var(--accent-success);
+  border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+.warning-row {
+  background-color: rgba(239, 68, 68, 0.02) !important;
+}
+
+.warning-row:hover {
+  background-color: rgba(239, 68, 68, 0.04) !important;
+}
+
+.animate-pulse {
+  animation: text-pulse 2s infinite;
+}
+
+@keyframes text-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+@keyframes pulse-border-exceed {
+  from { box-shadow: 0 0 2px rgba(239, 68, 68, 0.2); }
+  to { box-shadow: 0 0 10px rgba(239, 68, 68, 0.4); }
 }
 </style>

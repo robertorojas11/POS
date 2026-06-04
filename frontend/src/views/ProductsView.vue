@@ -50,9 +50,9 @@
               <td class="text-right text-green font-bold">${{ prod.price.toFixed(2) }}</td>
               <td class="text-right">${{ prod.cost_price.toFixed(2) }}</td>
               <td class="text-right" :class="{ 'text-rose font-bold': prod.stock_quantity <= prod.min_stock_level }">
-                {{ prod.stock_quantity }}
+                {{ prod.stock_quantity }} <span class="text-muted text-xs">{{ prod.uom }}</span>
               </td>
-              <td class="text-right">{{ prod.min_stock_level }}</td>
+              <td class="text-right">{{ prod.min_stock_level }} <span class="text-muted text-xs">{{ prod.uom }}</span></td>
               <td>
                 <span class="status-badge" :class="prod.is_active ? 'active' : 'inactive'">
                   {{ prod.is_active ? 'Active' : 'Inactive' }}
@@ -115,12 +115,25 @@
 
             <div class="form-group">
               <label>Stock Quantity</label>
-              <input type="number" v-model="formData.stock_quantity" class="pos-input" min="0" required />
+              <input type="number" v-model="formData.stock_quantity" class="pos-input" min="0" step="any" required />
             </div>
 
             <div class="form-group">
               <label>Min Alert Level</label>
-              <input type="number" v-model="formData.min_stock_level" class="pos-input" min="0" required />
+              <input type="number" v-model="formData.min_stock_level" class="pos-input" min="0" step="any" required />
+            </div>
+
+            <div class="form-group">
+              <label>Unit of Measurement</label>
+              <select v-model="formData.uom" class="pos-input">
+                <option value="pieces">Pieces (pcs)</option>
+                <option value="liters">Liters (L)</option>
+                <option value="gallons">Gallons (gal)</option>
+                <option value="kilograms">Kilograms (kg)</option>
+                <option value="grams">Grams (g)</option>
+                <option value="pounds">Pounds (lb)</option>
+                <option value="ounces">Ounces (oz)</option>
+              </select>
             </div>
 
             <div class="form-group">
@@ -174,6 +187,7 @@ const formData = ref({
   cost_price: 0,
   stock_quantity: 0,
   min_stock_level: 5,
+  uom: 'pieces',
   category_id: null,
   is_active: true
 })
@@ -200,6 +214,7 @@ const openAddModal = () => {
     cost_price: 0,
     stock_quantity: 0,
     min_stock_level: 5,
+    uom: 'pieces',
     category_id: null,
     is_active: true
   }
@@ -218,6 +233,7 @@ const openEditModal = (prod) => {
     cost_price: prod.cost_price,
     stock_quantity: prod.stock_quantity,
     min_stock_level: prod.min_stock_level,
+    uom: prod.uom || 'pieces',
     category_id: prod.category_id,
     is_active: prod.is_active
   }

@@ -1,8 +1,17 @@
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
+import axios from 'axios'
 import router from './router'
 import './style.css'
 import App from './App.vue'
+
+// Set terminal ID header for multi-terminal caching and tracking
+let terminalId = localStorage.getItem('terminal_id')
+if (!terminalId) {
+  terminalId = 'terminal_' + Math.random().toString(36).substr(2, 9)
+  localStorage.setItem('terminal_id', terminalId)
+}
+axios.defaults.headers.common['X-Terminal-Id'] = terminalId
 
 const app = createApp(App)
 const pinia = createPinia()

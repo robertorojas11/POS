@@ -135,6 +135,17 @@ def get_discounts():
     return jsonify([d.to_dict() for d in discounts]), 200
 
 
+@sale_bp.route('/discounts/validate/<code>', methods=['GET'])
+@jwt_required()
+def validate_discount(code):
+    code_cleaned = str(code).strip().upper()
+    discount = Discount.query.filter_by(code=code_cleaned, is_active=True).first()
+    if not discount:
+        return jsonify({"error": "Invalid or inactive discount code"}), 404
+    return jsonify(discount.to_dict()), 200
+
+
+
 @sale_bp.route('/discounts', methods=['POST'])
 @jwt_required()
 @requires_user_type('Admin')
@@ -303,3 +314,28 @@ def active_shift():
 def shift_history():
     shifts = Shift.query.order_by(Shift.start_time.desc()).all()
     return jsonify([s.to_dict() for s in shifts]), 200
+
+
+@sale_bp.route('/shifts/active-all', methods=['GET'])
+@jwt_required()
+@requires_user_type('Admin', 'Manager')
+def active_shifts_all():
+    active_shifts = Shift.query.filter_by(status='open').all()
+    
+    results = []
+    for s in active_shifts:
+        cash_sales_query = db.session.query(func.sum(Sale.total)).filter(
+            Sale.shift_id == s.id,
+            Sale.payment_method == 'cash'
+        ).scalar()
+        total_cash_sales = float(cash_sales_query) if cash_sales_query else 0.00
+        
+        expected_cash = float(s.start_cash) + total_cash_sales
+        
+        shift_data = s.to_dict()
+        shift_data['expected_cash'] = expected_cash
+        shift_data['current_cash_sales'] = total_cash_sales
+        results.append(shift_data)
+        
+    return jsonify(results), 200
+

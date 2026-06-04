@@ -98,14 +98,34 @@ import { computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/store/auth'
 import { useCartStore } from '@/store/cart'
+import { useProductsStore } from '@/store/products'
 
 const authStore = useAuthStore()
 const cartStore = useCartStore()
+const productsStore = useProductsStore()
 const route = useRoute()
 const router = useRouter()
 
 onMounted(() => {
   cartStore.initConnection()
+  
+  if (typeof EventSource !== 'undefined') {
+    const eventSource = new EventSource('/api/products/events')
+    eventSource.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data)
+        if (data.event === 'invalidate') {
+          console.log('Catalog update nudge received from server. Reloading product list...')
+          productsStore.fetchProducts()
+        }
+      } catch (err) {
+        console.error('Failed to parse SSE event', err)
+      }
+    }
+    eventSource.onerror = (err) => {
+      console.warn('SSE catalog stream lost. Will reconnect automatically.', err)
+    }
+  }
 })
 
 const userInitial = computed(() => {
