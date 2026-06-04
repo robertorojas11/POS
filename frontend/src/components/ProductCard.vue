@@ -15,8 +15,8 @@
       </div>
       <div class="product-action-row">
         <div class="price-group">
-          <span class="product-price">${{ Number(price).toFixed(2) }}</span>
-          <span class="product-price-tax">incl. tax: ${{ priceWithTax.toFixed(2) }}</span>
+          <span class="product-price">${{ priceWithTax.toFixed(2) }}</span>
+          <span class="product-price-tax">Excl. tax: ${{ Number(price).toFixed(2) }}</span>
         </div>
         <button class="add-btn" @click.stop="$emit('add')">
           <Plus class="add-icon" />

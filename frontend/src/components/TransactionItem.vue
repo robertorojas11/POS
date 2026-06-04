@@ -23,9 +23,9 @@
     </div>
     
     <div class="item-pricing">
-      <span class="item-total-price">${{ Number(totalPrice).toFixed(2) }}</span>
-      <span class="item-total-price-tax">with tax: ${{ totalPriceWithTax.toFixed(2) }}</span>
-      <span class="item-unit-price">${{ Number(price).toFixed(2) }} (with tax: ${{ unitPriceWithTax.toFixed(2) }}) / {{ uom }}</span>
+      <span class="item-total-price">${{ totalPriceWithTax.toFixed(2) }}</span>
+      <span class="item-total-price-tax">Excl. tax: ${{ Number(totalPrice).toFixed(2) }}</span>
+      <span class="item-unit-price">${{ unitPriceWithTax.toFixed(2) }} (Excl. tax: ${{ Number(price).toFixed(2) }}) / {{ uom }}</span>
     </div>
     
     <button class="remove-btn" @click="$emit('remove')">
@@ -115,6 +115,7 @@ const totalPriceWithTax = computed(() => {
   min-width: 0;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .item-name {
@@ -131,11 +132,15 @@ const totalPriceWithTax = computed(() => {
   align-items: center;
   gap: 8px;
   margin-top: 1px;
+  overflow: hidden;
 }
 
 .item-sku {
   font-size: 0.72rem;
   color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .item-uom-chip {
