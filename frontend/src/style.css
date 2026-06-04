@@ -143,6 +143,14 @@ body {
   box-shadow: 0 0 0 3px rgba(17, 24, 39, 0.05);
 }
 
+.pos-input.with-left-icon {
+  padding-left: 44px;
+}
+
+.pos-input.with-right-icon {
+  padding-right: 44px;
+}
+
 /* Utility Animations */
 .fade-enter-active, .fade-leave-active {
   transition: opacity 0.2s ease;

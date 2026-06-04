@@ -83,3 +83,21 @@ def me():
     if not user:
         return jsonify({"error": "User not found"}), 404
     return jsonify(user.to_dict()), 200
+
+
+@auth_bp.route('/users', methods=['GET'])
+@jwt_required()
+def get_users():
+    current_user_id = int(get_jwt_identity())
+    current_user = User.query.get_or_404(current_user_id)
+    
+    if current_user.user_type.name not in ('Admin', 'Manager'):
+        return jsonify({"error": "Access denied"}), 403
+        
+    if current_user.user_type.name == 'Admin':
+        users = User.query.all()
+    else:
+        # Managers only see Operators (id=3)
+        users = User.query.filter_by(user_type_id=3).all()
+        
+    return jsonify([u.to_dict() for u in users]), 200

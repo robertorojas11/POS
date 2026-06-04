@@ -139,6 +139,40 @@
           </div>
         </SectionCard>
 
+        <!-- Workers directory panel -->
+        <SectionCard 
+          v-if="isAdminOrManager" 
+          :title="authStore.user?.role === 'admin' ? 'Store Workers Directory' : 'Shift Employees Directory'" 
+          :description="authStore.user?.role === 'admin' ? 'View status of all managers and register operators.' : 'Monitor cashier operators assigned to your shift.'"
+        >
+          <div class="workers-grid-list">
+            <div 
+              v-for="worker in workers" 
+              :key="worker.id" 
+              class="worker-badge-card"
+            >
+              <div class="worker-card-left">
+                <div class="worker-avatar-badge">
+                  {{ worker.username.charAt(0).toUpperCase() }}
+                </div>
+                <div class="worker-details-meta">
+                  <span class="worker-name">{{ worker.username }}</span>
+                  <span class="worker-email">{{ worker.email }}</span>
+                </div>
+              </div>
+              <div class="worker-card-right">
+                <span class="role-badge" :class="worker.role.toLowerCase()">
+                  {{ worker.role.toUpperCase() }}
+                </span>
+                <span class="status-indicator-dot" :class="isWorkerActive(worker) ? 'active' : 'offline'">
+                  <span class="status-dot"></span>
+                  {{ isWorkerActive(worker) ? 'Active' : 'Offline' }}
+                </span>
+              </div>
+            </div>
+          </div>
+        </SectionCard>
+
       </div>
 
       <!-- Right Column: Real-Time Alerts & Feed -->
@@ -231,6 +265,7 @@ const stats = ref({
 const recentSales = ref([])
 const lowStockList = ref([])
 const activeShifts = ref([])
+const workers = ref([])
 const loading = ref(true)
 
 const isAdminOrManager = computed(() => ['admin', 'manager'].includes(authStore.user?.role))
@@ -252,6 +287,10 @@ const cashDropAlerts = computed(() => {
   return activeShifts.value.filter(s => s.expected_cash > 1000)
 })
 
+const isWorkerActive = (worker) => {
+  return activeShifts.value.some(s => s.cashier_id === worker.id)
+}
+
 const loadDashboardData = async () => {
   loading.value = true
   try {
@@ -262,6 +301,7 @@ const loadDashboardData = async () => {
     ]
     if (isAdminOrManager.value) {
       requests.push(axios.get('/api/sales/shifts/active-all'))
+      requests.push(axios.get('/api/auth/users'))
     }
     
     const results = await Promise.all(requests)
@@ -271,6 +311,9 @@ const loadDashboardData = async () => {
     
     if (isAdminOrManager.value && results[3]) {
       activeShifts.value = results[3].data
+    }
+    if (isAdminOrManager.value && results[4]) {
+      workers.value = results[4].data
     }
   } catch (err) {
     console.error('Failed to load dashboard data', err)
@@ -636,5 +679,108 @@ onMounted(() => {
 
 @keyframes spin {
   to { transform: rotate(360deg); }
+}
+
+.workers-grid-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.worker-badge-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background-color: #f9fafb;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+}
+
+.worker-card-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.worker-avatar-badge {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background-color: #e5e7eb;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.worker-details-meta {
+  display: flex;
+  flex-direction: column;
+}
+
+.worker-name {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.worker-email {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.worker-card-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.role-badge {
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+}
+
+.role-badge.admin {
+  background-color: rgba(184, 241, 90, 0.2);
+  color: #557c11;
+}
+
+.role-badge.manager {
+  background-color: rgba(99, 102, 241, 0.1);
+  color: #4f46e5;
+}
+
+.role-badge.operator {
+  background-color: rgba(229, 231, 235, 1);
+  color: #374151;
+}
+
+.status-indicator-dot {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.status-indicator-dot.active {
+  color: var(--accent-success);
+}
+
+.status-indicator-dot.offline {
+  color: var(--text-muted);
+}
+
+.status-indicator-dot .status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: currentColor;
 }
 </style>
