@@ -35,34 +35,43 @@ The registry screen (`/pos`) is where you process customer sales.
 | [ Barcode Search / Selector ]                [Online/Green] |
 | +-------------------------+ +-----------------------------+ |
 | | SKU / Product Name      | | Cart Summary                | |
-| +-------------------------+ | - Apples (1.500 kg)  $4.50  | |
-| | Apples [1 kg]     $3.00 | | - Rice   (2.000 kg)  $6.00  | |
-| | Milk   [1 L]      $2.50 | |                             | |
-| | Soda   [1 piece]  $1.50 | | Discount Code: [ SPRING20 ] | |
+| +-------------------------+ | - Apples (1.500 kg)  $4.87  | |
+| | Apples [1 kg]     $3.25 | |                             | |
+| | (Excl. Tax: $3.00)      | |                             | |
+| | Milk   [1 L]      $2.71 | | Discount Code: [ SPRING20 ] | |
+| | (Excl. Tax: $2.50)      | |                             | |
 | +-------------------------+ +-----------------------------+ |
-|                             | Subtotal:            $10.50 | |
-|                             | Discount Applied:    -$2.10 | |
-|                             | Tax (8.25%):          $0.69 | |
-|                             | Total:                $9.09 | |
+|                             | Subtotal:            $11.37 | |
+|                             | Discount Applied:    -$2.27 | |
+|                             | Tax (8.25%):          $0.75 | |
+|                             | Total:                $9.85 | |
 |                             +-----------------------------+ |
 |                             | [ PAY CASH ]   [ PAY CARD ] | |
 +-------------------------------------------------------------+
 ```
 
+### Tax-Inclusive Pricing (Retail-First)
+- **Primary Prices**: To match standard consumer retail settings, the large, main price shown on product catalog cards and the cart line items is **tax-inclusive** (8.25% standard sales tax included).
+- **Secondary Net Prices**: The net price (excluding tax) is displayed directly below in smaller gray text (labeled `Excl. tax: $X.XX`).
+
 ### Adding Products to Cart
 - **Barcode Scanner**: Position your cursor in the product search box and scan the barcode. The product will instantly be added to the cart.
 - **Manual Catalog Selector**: Click on product categories to filter, and click a product card to add it to the cart.
 
-### Handling Decimal Units of Measurement (UOM)
-For bulk, weighted, or volume products (e.g., Kilograms, Grams, Liters, Gallons, Pounds):
+### Quantity Adjustment and UOM
+For bulk, weighted, or volume products (e.g., Kilograms, Grams, Liters, Gallons, Meters):
 1. Locate the product in the active cart list.
-2. The quantity input field allows **3 decimal places** of precision.
-3. Use the keyboard to input the exact weight/volume (e.g., `1.545` for 1.545 kg of apples).
-4. The cart subtotal will automatically recalculate.
+2. Adjust the quantity using the circular lime **-** and **+** buttons.
+3. For weighted items, click and input the exact weight/volume (e.g., `1.545` for 1.545 kg of apples). The input accepts up to **3 decimal places** of precision.
+4. Spacing is automatically adjusted to prevent layout overlapping.
+
+### Deleting Items from Cart
+- **Remove Single Item**: Click the **Trash Can (Delete)** icon on the right side of the cart row. This deletes that specific item from the ticket.
+- **Clear Entire Cart**: Click **Clear Cart** at the top of the panel to empty all items.
 
 ### Applying Coupon Discounts
-1. In the checkout panel, locate the **Discount Code** input field.
-2. Input the promotional coupon code (e.g. `SPRING20`) and click **Apply**.
+1. In the checkout panel, locate the **Promo Code** input field.
+2. Input the promotional code (e.g. `SPRING20`) and click **Apply**.
 3. If online, the app verifies with the backend API. If offline, the app scans the local IndexedDB promotions cache.
 4. If valid, the cart total will instantly display the applied reduction.
 
@@ -88,5 +97,5 @@ ApexPOS is designed to continue operations even if the store network goes down.
 ### Synchronizing Offline Sales
 1. Once connection is restored, the status banner switches to **Online (Green)**.
 2. The system automatically attempts to sync queued sales in the background.
-3. You can also manually trigger synchronization by clicking the **Sync Queue** button in the header.
+3. You can also manually trigger synchronization by clicking the **Sync** button in the header.
 4. Once completed, your catalog inventory levels are refreshed from the server.

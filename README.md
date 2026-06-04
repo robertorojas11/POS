@@ -61,7 +61,18 @@ The easiest way to start the entire system (Database, Cache, Backend, and Fronte
 
 4. **Default Login Credentials**:
    - **Username**: `admin`
-   - **Password**: `securepassword`
+   - **Password**: `admin` (or `securepassword` if reset)
+
+---
+
+## 📖 System Manuals & Directives
+
+Complete user guides and technical architecture directives are available at the **[ApexPOS Documentation Center](file:///D:/ERP/POS/docs/README.md)**:
+* **[Operator User Manual](file:///D:/ERP/POS/docs/user_manuals/operator_manual.md)**: Daily register operations, UOM, and offline checkouts.
+* **[Manager User Manual](file:///D:/ERP/POS/docs/user_manuals/manager_manual.md)**: Product catalog administration and live register monitoring.
+* **[Administrator User Manual](file:///D:/ERP/POS/docs/user_manuals/admin_manual.md)**: Seeding initial values and user roles provision.
+* **[Offline-First & Sync Architecture](file:///D:/ERP/POS/docs/architecture/offline_sync.md)**: Technical detail on IndexedDB flowcharts.
+* **[Multi-Terminal Cache & SSE Sync](file:///D:/ERP/POS/docs/architecture/terminal_caching_sse.md)**: Server-Sent Events notifications design.
 
 ---
 

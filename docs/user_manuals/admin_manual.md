@@ -17,6 +17,11 @@ There are three user types, defined as follows:
 | **Manager** | `2` | Modify products, review sales history, monitor shifts/cash drawers, view store reports. |
 | **Operator** | `3` | Start/end own shifts, register customers, validate coupons, and checkout sales. |
 
+### 👥 Store Workers Directory
+Admin users have access to the **Store Workers Directory** on their Dashboard.
+- Unlike the Manager's view (which only shows register Operators), the Admin's directory panel lists **all** store workers, including other Admins, Managers, and operators/cashiers.
+- Displays employee username, email, system role, and real-time **Active** (with green indicator dot) or **Offline** status based on active shifts.
+
 ### Provisioning a New User
 To register a new employee:
 1. Make a POST request to `/api/auth/register` (or use the admin registration interface).
@@ -65,4 +70,4 @@ To populate the database tables with standard user types, categories, initial pr
 ```bash
 python seed.py
 ```
-*(Executes user type insertions and links mock managers and operator credentials)*.
+*(Executes user type insertions and links default manager and operator credentials, setting admin password to `admin` for local testing)*.
