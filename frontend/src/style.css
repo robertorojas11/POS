@@ -1,4 +1,4 @@
-/* Modern Design System for POS Application */
+/* ApexPOS Premium CSS Design System */
 
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
 
@@ -7,36 +7,38 @@
   line-height: 1.5;
   font-weight: 400;
 
-  /* Sleek Slate and Cobalt Color Palette */
-  --bg-primary: #0b0f19;
-  --bg-secondary: #131b2e;
-  --bg-tertiary: #1e2942;
+  /* Client Brand Variables - Highly Adaptable */
+  --bg-app: #f3f4f6;        /* Soft gray background */
+  --bg-card: #ffffff;       /* Clean white content area */
+  --bg-sidebar: #111111;    /* Black/dark sidebar */
   
-  --text-primary: #f8fafc;
-  --text-secondary: #94a3b8;
-  --text-muted: #64748b;
+  --text-primary: #111827;    /* Slate 900 */
+  --text-secondary: #4b5563;  /* Slate 600 */
+  --text-muted: #9ca3af;      /* Slate 400 */
   
-  --accent-primary: #4f46e5;      /* Indigo */
-  --accent-primary-hover: #4338ca;
+  --accent-lime: #B8F15A;     /* Lime-green accent color */
+  --accent-lime-text: #111111;
+  --accent-lime-hover: #a1db3d;
+  
   --accent-success: #10b981;      /* Emerald Green */
-  --accent-success-hover: #059669;
   --accent-warning: #f59e0b;      /* Amber Yellow */
-  --accent-danger: #ef4444;       /* Rose Red */
+  --accent-danger: #ff5e5e;       /* Red Alert */
   
-  --border-color: #334155;
-  --border-focus: #4f46e5;
+  --border-color: #e5e7eb;        /* Light gray border */
+  --border-focus: #111827;
   
   --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.15), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.04), 0 4px 6px -2px rgba(0, 0, 0, 0.02);
+  --shadow-premium: 0 2px 12px rgba(0, 0, 0, 0.05);
   
-  --radius-sm: 6px;
-  --radius-md: 10px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
   --radius-lg: 16px;
+  --radius-xl: 20px;
   
-  --transition-fast: 0.15s ease;
-  --transition-normal: 0.25s ease;
+  --transition-fast: 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-normal: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 * {
@@ -46,7 +48,7 @@
 }
 
 body {
-  background-color: var(--bg-primary);
+  background-color: var(--bg-app);
   color: var(--text-primary);
   min-height: 100vh;
   overflow-x: hidden;
@@ -58,7 +60,7 @@ body {
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: var(--bg-primary);
+  background: var(--bg-app);
 }
 ::-webkit-scrollbar-thumb {
   background: var(--border-color);
@@ -68,46 +70,50 @@ body {
   background: var(--text-muted);
 }
 
-/* Custom UI Utility Components */
+/* Base Card Style */
+.premium-card {
+  background-color: var(--bg-card);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-premium);
+  border: 1px solid var(--border-color);
+  padding: 24px;
+  transition: transform var(--transition-normal), box-shadow var(--transition-normal);
+}
+
+/* Premium Buttons */
 .pos-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  padding: 10px 18px;
+  padding: 12px 24px;
   border-radius: var(--radius-md);
-  font-weight: 500;
+  font-weight: 600;
   font-size: 0.95rem;
   border: 1px solid transparent;
   cursor: pointer;
+  font-family: inherit;
   transition: all var(--transition-fast);
 }
 
-.pos-btn-primary {
-  background-color: var(--accent-primary);
-  color: #fff;
+.pos-btn-accent {
+  background-color: var(--accent-lime);
+  color: var(--accent-lime-text);
 }
-.pos-btn-primary:hover {
-  background-color: var(--accent-primary-hover);
-  box-shadow: 0 0 12px rgba(79, 70, 229, 0.4);
-}
-
-.pos-btn-success {
-  background-color: var(--accent-success);
-  color: #fff;
-}
-.pos-btn-success:hover {
-  background-color: var(--accent-success-hover);
-  box-shadow: 0 0 12px rgba(16, 185, 129, 0.4);
+.pos-btn-accent:hover {
+  background-color: var(--accent-lime-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(184, 241, 90, 0.3);
 }
 
 .pos-btn-secondary {
-  background-color: var(--bg-tertiary);
+  background-color: #f9fafb;
   color: var(--text-primary);
   border: 1px solid var(--border-color);
 }
 .pos-btn-secondary:hover {
-  background-color: var(--border-color);
+  background-color: #f3f4f6;
+  border-color: var(--text-muted);
 }
 
 .pos-btn-danger {
@@ -115,14 +121,15 @@ body {
   color: #fff;
 }
 .pos-btn-danger:hover {
-  background-color: #dc2626;
-  box-shadow: 0 0 12px rgba(239, 68, 68, 0.4);
+  opacity: 0.95;
+  box-shadow: 0 4px 12px rgba(255, 94, 94, 0.3);
 }
 
+/* Premium Form Elements */
 .pos-input {
   width: 100%;
-  padding: 11px 14px;
-  background-color: var(--bg-secondary);
+  padding: 12px 16px;
+  background-color: #ffffff;
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   color: var(--text-primary);
@@ -133,29 +140,13 @@ body {
 .pos-input:focus {
   outline: none;
   border-color: var(--border-focus);
-  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.2);
+  box-shadow: 0 0 0 3px rgba(17, 24, 39, 0.05);
 }
 
-.pos-card {
-  background-color: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-lg);
-  padding: 24px;
-  box-shadow: var(--shadow-md);
+/* Utility Animations */
+.fade-enter-active, .fade-leave-active {
+  transition: opacity 0.2s ease;
 }
-
-/* Layout Utilities */
-.pos-grid-pos {
-  display: grid;
-  grid-template-columns: 1fr 380px;
-  gap: 20px;
-  height: calc(100vh - 80px);
-  padding: 20px;
-}
-
-@media (max-width: 1024px) {
-  .pos-grid-pos {
-    grid-template-columns: 1fr;
-    height: auto;
-  }
+.fade-enter-from, .fade-leave-to {
+  opacity: 0;
 }

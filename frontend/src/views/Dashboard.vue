@@ -1,168 +1,212 @@
 <template>
-  <div class="dashboard-container">
-    <!-- Stat Grid -->
-    <div class="stat-grid" v-if="!loading">
-      <div class="stat-card pos-card border-indigo">
-        <div class="stat-icon bg-indigo">💰</div>
-        <div class="stat-details">
-          <span class="stat-label">Today's Revenue</span>
-          <h3 class="stat-value">${{ stats.today_revenue.toFixed(2) }}</h3>
-        </div>
-      </div>
-      
-      <div class="stat-card pos-card border-green">
-        <div class="stat-icon bg-green">🛒</div>
-        <div class="stat-details">
-          <span class="stat-label">Transactions</span>
-          <h3 class="stat-value">{{ stats.today_transactions }}</h3>
-        </div>
-      </div>
+  <div class="dashboard-layout">
+    <!-- Top KPI Grid -->
+    <div class="kpi-grid" v-if="!loading">
+      <MetricCard 
+        title="Active Cashiers" 
+        :value="activeCashiersCount"
+        :icon="Users"
+        iconBg="rgba(184, 241, 90, 0.15)"
+        iconColor="var(--text-primary)"
+      />
+      <MetricCard 
+        title="Open Registers" 
+        :value="openRegistersCount"
+        :icon="Monitor"
+        iconBg="rgba(99, 102, 241, 0.1)"
+        iconColor="#4f46e5"
+      />
+      <MetricCard 
+        title="Total Drawer Cash" 
+        :value="'$' + totalDrawerCash.toFixed(2)"
+        :icon="DollarSign"
+        iconBg="rgba(16, 185, 129, 0.1)"
+        iconColor="var(--accent-success)"
+      />
+      <MetricCard 
+        title="Pending Cash Drops" 
+        :value="pendingDropsCount"
+        :icon="AlertTriangle"
+        iconBg="rgba(255, 94, 94, 0.1)"
+        iconColor="var(--accent-danger)"
+        :trend="pendingDropsCount > 0 ? 'Action required' : 'Status healthy'"
+        :trendType="pendingDropsCount > 0 ? 'negative' : 'positive'"
+      />
+    </div>
 
-      <div class="stat-card pos-card border-yellow">
-        <div class="stat-icon bg-yellow">🎟️</div>
-        <div class="stat-details">
-          <span class="stat-label">Average Ticket</span>
-          <h3 class="stat-value">${{ stats.average_ticket.toFixed(2) }}</h3>
-        </div>
+    <!-- Secondary KPI Row (Overview Stats) -->
+    <div class="kpi-grid secondary-kpis" v-if="!loading">
+      <div class="mini-kpi premium-card">
+        <span class="mini-title">Today's Revenue</span>
+        <h4 class="mini-value">${{ stats.today_revenue.toFixed(2) }}</h4>
       </div>
-
-      <div class="stat-card pos-card border-rose" :class="{ 'alert-glow': stats.low_stock_alerts > 0 }">
-        <div class="stat-icon bg-rose">⚠️</div>
-        <div class="stat-details">
-          <span class="stat-label">Low Stock Alerts</span>
-          <h3 class="stat-value">{{ stats.low_stock_alerts }}</h3>
-        </div>
+      <div class="mini-kpi premium-card">
+        <span class="mini-title">Total Checkouts</span>
+        <h4 class="mini-value">{{ stats.today_transactions }}</h4>
+      </div>
+      <div class="mini-kpi premium-card">
+        <span class="mini-title">Average Ticket</span>
+        <h4 class="mini-value">${{ stats.average_ticket.toFixed(2) }}</h4>
+      </div>
+      <div class="mini-kpi premium-card" :class="{ 'warning-border': stats.low_stock_alerts > 0 }">
+        <span class="mini-title">Low Stock Items</span>
+        <h4 class="mini-value" :class="{ 'text-danger': stats.low_stock_alerts > 0 }">{{ stats.low_stock_alerts }}</h4>
       </div>
     </div>
 
     <div v-else class="loading-state">
       <div class="spinner"></div>
-      <p>Loading overview analytics...</p>
+      <p>Syncing dashboard statistics...</p>
     </div>
 
-    <!-- Main Grid -->
-    <div class="main-sections" v-if="!loading">
-      <!-- Quick Actions -->
-      <div class="section-left">
-        <!-- Live Cashier Shifts Panel -->
-        <div v-if="isAdminOrManager" class="pos-card active-shifts-panel border-indigo" style="margin-bottom: 30px;">
-          <div class="panel-header">
-            <h3>⚡ Live Cashier Drawers</h3>
-            <span class="badge badge-success" v-if="activeShifts.length">{{ activeShifts.length }} Active</span>
-            <span class="badge badge-secondary" v-else>No Active Shifts</span>
-          </div>
-          
-          <div class="table-container">
-            <table class="report-table" v-if="activeShifts.length">
-              <thead>
-                <tr>
-                  <th>Cashier</th>
-                  <th>Terminal</th>
-                  <th>Store Location</th>
-                  <th class="text-right">Drawer Cash</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="shift in activeShifts" :key="shift.id" :class="{ 'warning-row': shift.expected_cash > 1000 }">
-                  <td>
-                    <div class="cashier-cell">
-                      <span class="cashier-name font-bold">{{ shift.cashier_name }}</span>
-                      <span class="shift-time text-muted">Started {{ formatTime(shift.start_time) }}</span>
-                    </div>
-                  </td>
-                  <td><code>{{ shift.terminal_id }}</code></td>
-                  <td>{{ shift.store_location }}</td>
-                  <td class="text-right font-bold" :class="{ 'text-danger animate-pulse': shift.expected_cash > 1000 }">
+    <!-- Main Command Content -->
+    <div class="dashboard-main-grid" v-if="!loading">
+      
+      <!-- Shift & Drawer Management Column -->
+      <div class="main-column-left">
+        
+        <!-- Shift Monitoring Section -->
+        <SectionCard title="Active Cashier Terminals" description="Overview of currently logged-in POS cashiers and open shift status.">
+          <div class="shift-grid-list" v-if="activeShifts.length">
+            <div 
+              v-for="shift in activeShifts" 
+              :key="shift.id"
+              class="cashier-status-card"
+              :class="{ 'card-warning': shift.expected_cash > 1000 }"
+            >
+              <div class="cashier-card-header">
+                <div>
+                  <h4 class="cashier-card-name">{{ shift.cashier_name }}</h4>
+                  <span class="register-label">Register #{{ shift.terminal_id }} • {{ shift.store_location }}</span>
+                </div>
+                <StatusBadge :status="shift.expected_cash > 1000 ? 'break' : 'active'" />
+              </div>
+              
+              <div class="cashier-card-body">
+                <div class="body-metric">
+                  <span class="metric-label">Shift Start</span>
+                  <span class="metric-val">{{ formatTime(shift.start_time) }}</span>
+                </div>
+                <div class="body-metric">
+                  <span class="metric-label">Drawer Balance</span>
+                  <span class="metric-val text-bold" :class="{ 'text-danger': shift.expected_cash > 1000 }">
                     ${{ shift.expected_cash.toFixed(2) }}
-                  </td>
-                  <td>
-                    <span v-if="shift.expected_cash > 1000" class="alert-badge exceed">
-                      ⚠️ Drop Required
-                    </span>
-                    <span v-else class="alert-badge normal">
-                      ✓ Healthy
-                    </span>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-            <div class="empty-state" v-else>
-              <p>All cashier terminals are currently closed.</p>
-            </div>
-          </div>
-        </div>
-
-        <div class="pos-card quick-actions">
-          <h3>Quick Terminal Actions</h3>
-          <div class="btn-group">
-            <router-link to="/pos" class="pos-btn pos-btn-primary action-btn">
-              ⚡ Open Register
-            </router-link>
-            <router-link to="/products" class="pos-btn pos-btn-secondary action-btn">
-              📦 Catalog Manager
-            </router-link>
-            <router-link to="/reports" class="pos-btn pos-btn-secondary action-btn">
-              📊 Analytics Board
-            </router-link>
-          </div>
-        </div>
-
-        <!-- Low Stock Table -->
-        <div class="pos-card low-stock-panel">
-          <div class="panel-header">
-            <h3>Low Stock Alerts</h3>
-            <span class="badge" v-if="lowStockList.length">{{ lowStockList.length }} items</span>
-          </div>
-          
-          <div class="table-container">
-            <table class="report-table" v-if="lowStockList.length">
-              <thead>
-                <tr>
-                  <th>Product</th>
-                  <th>SKU</th>
-                  <th class="text-right">In Stock</th>
-                  <th class="text-right">Min Level</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="item in lowStockList" :key="item.id">
-                  <td>{{ item.name }}</td>
-                  <td><code>{{ item.sku }}</code></td>
-                  <td class="text-right text-rose font-bold">{{ item.stock_quantity }}</td>
-                  <td class="text-right">{{ item.min_stock_level }}</td>
-                </tr>
-              </tbody>
-            </table>
-            <div class="empty-state" v-else>
-              <span class="check-icon">✓</span>
-              <p>All product inventory levels are healthy.</p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Recent Transactions -->
-      <div class="section-right">
-        <div class="pos-card recent-sales">
-          <h3>Recent Sales Transactions</h3>
-          <div class="sales-list" v-if="recentSales.length">
-            <div class="sale-row" v-for="sale in recentSales" :key="sale.id">
-              <div class="sale-left">
-                <span class="invoice-num">{{ sale.invoice_number }}</span>
-                <span class="sale-time">{{ formatTime(sale.created_at) }} • {{ sale.cashier_name }}</span>
+                  </span>
+                </div>
               </div>
-              <div class="sale-right">
-                <span class="sale-total">${{ sale.total.toFixed(2) }}</span>
-                <span class="payment-badge" :class="sale.payment_method">{{ sale.payment_method }}</span>
+
+              <div class="cashier-card-footer" v-if="shift.expected_cash > 1000">
+                <div class="drop-banner">
+                  <AlertTriangle class="drop-banner-icon" />
+                  <span>Drawer threshold exceeded. Collect cash drop.</span>
+                </div>
               </div>
             </div>
           </div>
-          <div class="empty-state" v-else>
-            <p>No transactions completed yet today.</p>
+          <div class="empty-status-state" v-else>
+            <Users class="empty-state-icon" />
+            <p>No active cashier terminals currently running.</p>
           </div>
-        </div>
+        </SectionCard>
+
+        <!-- Cash Drawer Monitoring -->
+        <SectionCard title="Cash Drawer Analysis" description="Compare current register holdings and detect system variances.">
+          <div class="drawer-monitoring-list" v-if="activeShifts.length">
+            <div v-for="shift in activeShifts" :key="'drawer-' + shift.id" class="drawer-monitor-item">
+              <div class="drawer-meta-title">
+                <span class="register-tag">Register #{{ shift.terminal_id }}</span>
+                <span class="cashier-meta-name">({{ shift.cashier_name }})</span>
+              </div>
+              <div class="drawer-grid-metrics">
+                <div class="drawer-pill green">
+                  <span class="pill-title">Opening Balance</span>
+                  <span class="pill-value">${{ shift.start_cash.toFixed(2) }}</span>
+                </div>
+                <div class="drawer-pill border">
+                  <span class="pill-title">Expected Holdings</span>
+                  <span class="pill-value">${{ shift.expected_cash.toFixed(2) }}</span>
+                </div>
+                <div class="drawer-pill" :class="shift.expected_cash > 1000 ? 'red' : 'green'">
+                  <span class="pill-title">Status</span>
+                  <span class="pill-value">{{ shift.expected_cash > 1000 ? 'Drop Triggered' : 'Healthy' }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="empty-status-state" v-else>
+            <DollarSign class="empty-state-icon" />
+            <p>No registers active for cash analysis.</p>
+          </div>
+        </SectionCard>
+
       </div>
+
+      <!-- Right Column: Real-Time Alerts & Feed -->
+      <div class="main-column-right">
+        
+        <!-- Alerts Feed -->
+        <SectionCard title="Real-Time Alerts Feed" description="Critical notifications and system activity triggers.">
+          <div class="alerts-feed-list">
+            
+            <!-- Cash Drop Alert -->
+            <div v-for="shift in cashDropAlerts" :key="'alert-drop-' + shift.id" class="feed-alert-item alert-danger">
+              <div class="alert-header">
+                <div class="alert-icon-box">
+                  <AlertTriangle class="alert-feed-icon" />
+                </div>
+                <div class="alert-text">
+                  <h5>Cash Drop Required</h5>
+                  <p>Register #{{ shift.terminal_id }} ({{ shift.cashier_name }}) has reached ${{ shift.expected_cash.toFixed(2) }}. Safe drop is required immediately.</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Low Stock Alerts -->
+            <div v-if="stats.low_stock_alerts > 0" class="feed-alert-item alert-warning">
+              <div class="alert-header">
+                <div class="alert-icon-box">
+                  <Package class="alert-feed-icon" />
+                </div>
+                <div class="alert-text">
+                  <h5>Low Stock Thresholds Triggered</h5>
+                  <p>{{ stats.low_stock_alerts }} catalog items have dropped below their minimum stock warnings. Restock suggested.</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Healthy Status Alert -->
+            <div v-if="cashDropAlerts.length === 0 && stats.low_stock_alerts === 0" class="feed-alert-item alert-success">
+              <div class="alert-header">
+                <div class="alert-icon-box">
+                  <Activity class="alert-feed-icon" />
+                </div>
+                <div class="alert-text">
+                  <h5>System Status Nominal</h5>
+                  <p>No register variances or stock alarms detected. All active terminals operating within standard parameters.</p>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </SectionCard>
+
+        <!-- Quick Access Navigation -->
+        <SectionCard title="Command Shortcuts" description="Jump quickly to other management views.">
+          <div class="shortcut-buttons-grid">
+            <router-link to="/pos" class="pos-btn pos-btn-accent shortcut-btn">
+              Open POS Register
+            </router-link>
+            <router-link to="/products" class="pos-btn pos-btn-secondary shortcut-btn">
+              Inventory Catalog
+            </router-link>
+            <router-link to="/reports" class="pos-btn pos-btn-secondary shortcut-btn">
+              Executive Reports
+            </router-link>
+          </div>
+        </SectionCard>
+
+      </div>
+
     </div>
   </div>
 </template>
@@ -171,6 +215,10 @@
 import { ref, onMounted, computed } from 'vue'
 import axios from 'axios'
 import { useAuthStore } from '@/store/auth'
+import MetricCard from '@/components/MetricCard.vue'
+import SectionCard from '@/components/SectionCard.vue'
+import StatusBadge from '@/components/StatusBadge.vue'
+import { Users, Monitor, DollarSign, AlertTriangle, Package, Activity } from 'lucide-vue-next'
 
 const authStore = useAuthStore()
 
@@ -186,6 +234,23 @@ const activeShifts = ref([])
 const loading = ref(true)
 
 const isAdminOrManager = computed(() => ['admin', 'manager'].includes(authStore.user?.role))
+
+// Computed metrics from active shifts
+const activeCashiersCount = computed(() => activeShifts.value.length)
+const openRegistersCount = computed(() => {
+  const terminals = activeShifts.value.map(s => s.terminal_id)
+  return new Set(terminals).size
+})
+const totalDrawerCash = computed(() => {
+  return activeShifts.value.reduce((sum, s) => sum + s.expected_cash, 0)
+})
+const pendingDropsCount = computed(() => {
+  return activeShifts.value.filter(s => s.expected_cash > 1000).length
+})
+
+const cashDropAlerts = computed(() => {
+  return activeShifts.value.filter(s => s.expected_cash > 1000)
+})
 
 const loadDashboardData = async () => {
   loading.value = true
@@ -225,238 +290,331 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.dashboard-container {
+.dashboard-layout {
   display: flex;
   flex-direction: column;
-  gap: 30px;
+  gap: 24px;
 }
 
-.stat-grid {
+.kpi-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 20px;
 }
 
-.stat-card {
-  display: flex;
-  align-items: center;
-  gap: 20px;
-  padding: 24px;
+.secondary-kpis {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
 }
 
-.border-indigo { border-left: 4px solid var(--accent-primary); }
-.border-green { border-left: 4px solid var(--accent-success); }
-.border-yellow { border-left: 4px solid var(--accent-warning); }
-.border-rose { border-left: 4px solid var(--accent-danger); }
-
-.alert-glow {
-  animation: pulse-border 2s infinite alternate;
-}
-
-@keyframes pulse-border {
-  from { box-shadow: var(--shadow-md); }
-  to { box-shadow: 0 0 16px rgba(239, 68, 68, 0.25); }
-}
-
-.stat-icon {
-  width: 50px;
-  height: 50px;
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 1.5rem;
-}
-
-.bg-indigo { background-color: rgba(79, 70, 229, 0.15); }
-.bg-green { background-color: rgba(16, 185, 129, 0.15); }
-.bg-yellow { background-color: rgba(245, 158, 11, 0.15); }
-.bg-rose { background-color: rgba(239, 68, 68, 0.15); }
-
-.stat-details {
+.mini-kpi {
+  background-color: var(--bg-card);
+  padding: 16px 20px;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
 
-.stat-label {
-  font-size: 0.85rem;
-  color: var(--text-secondary);
-  font-weight: 500;
+.mini-kpi.warning-border {
+  border-color: rgba(255, 94, 94, 0.3);
 }
 
-.stat-value {
-  font-size: 1.5rem;
-  color: #fff;
+.mini-title {
+  font-size: 0.75rem;
   font-weight: 700;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
-.main-sections {
+.mini-value {
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.dashboard-main-grid {
   display: grid;
-  grid-template-columns: 1.2fr 1fr;
-  gap: 30px;
+  grid-template-columns: 1.3fr 1fr;
+  gap: 24px;
 }
 
 @media (max-width: 1024px) {
-  .main-sections {
+  .dashboard-main-grid {
     grid-template-columns: 1fr;
   }
 }
 
-.section-left {
+.main-column-left, .main-column-right {
   display: flex;
   flex-direction: column;
-  gap: 30px;
+  gap: 24px;
 }
 
-.quick-actions h3,
-.low-stock-panel h3,
-.recent-sales h3 {
-  font-size: 1.1rem;
-  font-weight: 600;
-  margin-bottom: 20px;
-  color: #fff;
+/* Cashier Status Card design */
+.shift-grid-list {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
 }
 
-.btn-group {
+.cashier-status-card {
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 16px 20px;
+  background-color: #f9fafb;
   display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 14px;
 }
 
-.action-btn {
-  flex-grow: 1;
-  text-decoration: none;
-  font-size: 0.95rem;
-  padding: 12px;
+.cashier-status-card.card-warning {
+  border-color: rgba(255, 94, 94, 0.3);
+  background-color: rgba(255, 94, 94, 0.01);
 }
 
-.panel-header {
+.cashier-card-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
+  align-items: flex-start;
 }
 
-.badge {
-  background-color: rgba(239, 68, 68, 0.15);
-  color: var(--accent-danger);
-  border: 1px solid rgba(239, 68, 68, 0.2);
-  padding: 4px 10px;
-  border-radius: 12px;
-  font-size: 0.75rem;
-  font-weight: 600;
+.cashier-card-name {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-primary);
 }
 
-.table-container {
-  overflow-x: auto;
+.register-label {
+  font-size: 0.78rem;
+  color: var(--text-muted);
 }
 
-.report-table {
-  width: 100%;
-  border-collapse: collapse;
+.cashier-card-body {
+  display: flex;
+  gap: 24px;
 }
 
-.report-table th,
-.report-table td {
-  padding: 12px;
-  text-align: left;
-  border-bottom: 1px solid var(--border-color);
+.body-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.metric-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  font-weight: 700;
+  letter-spacing: 0.3px;
+}
+
+.metric-val {
   font-size: 0.9rem;
-}
-
-.report-table th {
-  color: var(--text-secondary);
   font-weight: 600;
-  background-color: var(--bg-tertiary);
+  color: var(--text-secondary);
 }
 
-.report-table tr:hover {
-  background-color: rgba(255, 255, 255, 0.02);
+.metric-val.text-bold {
+  font-size: 0.95rem;
+  font-weight: 700;
 }
 
-.text-right { text-align: right; }
-.text-rose { color: var(--accent-danger); }
-.font-bold { font-weight: 600; }
+.cashier-card-footer {
+  border-top: 1px dashed var(--border-color);
+  padding-top: 12px;
+}
 
-.empty-state {
+.drop-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--accent-danger);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.drop-banner-icon {
+  width: 16px;
+  height: 16px;
+  animation: pulse-icon 1.5s infinite;
+}
+
+@keyframes pulse-icon {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.1); }
+  100% { transform: scale(1); }
+}
+
+.empty-status-state {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 40px;
-  text-align: center;
+  padding: 32px;
   color: var(--text-muted);
+  gap: 8px;
 }
 
-.check-icon {
-  font-size: 2rem;
-  color: var(--accent-success);
-  margin-bottom: 12px;
+.empty-state-icon {
+  width: 32px;
+  height: 32px;
+  stroke-width: 1.5px;
 }
 
-.sales-list {
+/* Cash drawer monitoring pills */
+.drawer-monitoring-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.drawer-monitor-item {
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.drawer-meta-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.register-tag {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.cashier-meta-name {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+
+.drawer-grid-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.drawer-pill {
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.drawer-pill.border {
+  border: 1px solid var(--border-color);
+  background-color: #ffffff;
+}
+
+.drawer-pill.green {
+  background-color: rgba(184, 241, 90, 0.15);
+  color: #557c11;
+  font-weight: 600;
+}
+
+.drawer-pill.red {
+  background-color: rgba(255, 94, 94, 0.1);
+  color: #c22525;
+  font-weight: 600;
+}
+
+.pill-title {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  font-weight: 700;
+}
+
+.pill-value {
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+/* Alerts feed */
+.alerts-feed-list {
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
 
-.sale-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 16px;
-  background-color: var(--bg-tertiary);
+.feed-alert-item {
   border-radius: var(--radius-md);
-  border: 1px solid var(--border-color);
-  transition: transform var(--transition-fast);
+  padding: 14px 16px;
+  border: 1px solid transparent;
 }
 
-.sale-row:hover {
-  transform: translateX(4px);
+.feed-alert-item.alert-danger {
+  background-color: rgba(255, 94, 94, 0.05);
+  border-color: rgba(255, 94, 94, 0.2);
+  color: #b91c1c;
 }
 
-.sale-left {
+.feed-alert-item.alert-warning {
+  background-color: rgba(245, 158, 11, 0.05);
+  border-color: rgba(245, 158, 11, 0.2);
+  color: #b45309;
+}
+
+.feed-alert-item.alert-success {
+  background-color: rgba(16, 185, 129, 0.05);
+  border-color: rgba(16, 185, 129, 0.2);
+  color: #047857;
+}
+
+.alert-header {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  gap: 12px;
+  align-items: flex-start;
 }
 
-.invoice-num {
-  font-size: 0.95rem;
-  font-weight: 600;
-  color: #fff;
-}
-
-.sale-time {
-  font-size: 0.8rem;
-  color: var(--text-muted);
-}
-
-.sale-right {
+.alert-icon-box {
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 6px;
+  align-items: center;
+  justify-content: center;
+  padding-top: 2px;
 }
 
-.sale-total {
-  font-size: 1.1rem;
+.alert-feed-icon {
+  width: 18px;
+  height: 18px;
+}
+
+.alert-text h5 {
+  font-size: 0.85rem;
   font-weight: 700;
-  color: var(--accent-success);
+  margin-bottom: 2px;
 }
 
-.payment-badge {
-  font-size: 0.75rem;
-  padding: 2px 8px;
-  border-radius: 4px;
-  text-transform: uppercase;
-  font-weight: 600;
+.alert-text p {
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: var(--text-secondary);
 }
-.payment-badge.cash { background-color: rgba(16, 185, 129, 0.15); color: #34d399; }
-.payment-badge.card { background-color: rgba(79, 70, 229, 0.15); color: #818cf8; }
-.payment-badge.mobile_pay { background-color: rgba(245, 158, 11, 0.15); color: #fbbf24; }
 
+.shortcut-buttons-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.shortcut-btn {
+  width: 100%;
+  padding: 10px 16px;
+  text-decoration: none;
+  font-size: 0.85rem;
+}
+
+/* Loading animations */
 .loading-state {
   display: flex;
   flex-direction: column;
@@ -468,81 +626,15 @@ onMounted(() => {
 }
 
 .spinner {
-  width: 40px;
-  height: 40px;
+  width: 36px;
+  height: 36px;
   border: 3px solid var(--border-color);
-  border-top-color: var(--accent-primary);
+  border-top-color: var(--accent-lime-hover);
   border-radius: 50%;
   animation: spin 1s linear infinite;
 }
 
 @keyframes spin {
   to { transform: rotate(360deg); }
-}
-
-.badge-success {
-  background-color: rgba(16, 185, 129, 0.15);
-  color: var(--accent-success);
-  border: 1px solid rgba(16, 185, 129, 0.2);
-}
-
-.badge-secondary {
-  background-color: var(--bg-tertiary);
-  color: var(--text-secondary);
-  border: 1px solid var(--border-color);
-}
-
-.cashier-cell {
-  display: flex;
-  flex-direction: column;
-}
-
-.shift-time {
-  font-size: 0.75rem;
-}
-
-.alert-badge {
-  font-size: 0.75rem;
-  padding: 4px 8px;
-  border-radius: var(--radius-sm);
-  font-weight: 600;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.alert-badge.exceed {
-  background-color: rgba(239, 68, 68, 0.15);
-  color: var(--accent-danger);
-  border: 1px solid rgba(239, 68, 68, 0.2);
-  animation: pulse-border-exceed 1.5s infinite alternate;
-}
-
-.alert-badge.normal {
-  background-color: rgba(16, 185, 129, 0.15);
-  color: var(--accent-success);
-  border: 1px solid rgba(16, 185, 129, 0.2);
-}
-
-.warning-row {
-  background-color: rgba(239, 68, 68, 0.02) !important;
-}
-
-.warning-row:hover {
-  background-color: rgba(239, 68, 68, 0.04) !important;
-}
-
-.animate-pulse {
-  animation: text-pulse 2s infinite;
-}
-
-@keyframes text-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.6; }
-}
-
-@keyframes pulse-border-exceed {
-  from { box-shadow: 0 0 2px rgba(239, 68, 68, 0.2); }
-  to { box-shadow: 0 0 10px rgba(239, 68, 68, 0.4); }
 }
 </style>

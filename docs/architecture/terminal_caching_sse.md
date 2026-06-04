@@ -10,7 +10,7 @@ In multi-register stores, products are cached in Redis to minimize database read
 
 ### Terminal Identification Header
 Every frontend request includes a terminal identifier.
-- Configured in [main.js](file:///D:/ERP/POS/frontend/src/main.js) as a global Axios interceptor.
+- Configured in [main.js](frontend/src/main.js) as a global Axios interceptor.
 - It generates/reads a unique terminal UUID from local storage and appends it to requests as:
   ```http
   X-Terminal-Id: terminal-uuid-string
@@ -42,7 +42,7 @@ flowchart TD
 ```
 
 ### Invalidation & Broadcast Sequence
-1. **Invalidation**: When a product is created or updated, the backend controller calls [RedisService.invalidate_products_cache()](file:///D:/ERP/POS/backend/app/services/redis_service.py). This deletes all Redis keys matching the pattern `pos:products:cache:*`.
+1. **Invalidation**: When a product is created or updated, the backend controller calls [RedisService.invalidate_products_cache()](backend/app/services/redis_service.py). This deletes all Redis keys matching the pattern `pos:products:cache:*`.
 2. **Redis Pub/Sub Publish**: The same service publishes an event notification message (e.g. `'reload'`) to the Redis channel `pos:products:events`.
 3. **SSE Connection**: Cashier terminals establish a persistent connection to `/api/products/events` using the browser's native `EventSource` API.
 4. **SSE Event Handlers**:
@@ -55,7 +55,7 @@ flowchart TD
 ## 💻 3. Frontend Event Listener
 
 The SSE listener is registered globally in the application shell layout:
-* **Location**: [MainLayout.vue](file:///D:/ERP/POS/frontend/src/components/layouts/MainLayout.vue)
+* **Location**: [MainLayout.vue](frontend/src/components/layouts/MainLayout.vue)
 * **Action**:
   - Initializes `new EventSource('/api/products/events')`.
   - Listens for message events.
