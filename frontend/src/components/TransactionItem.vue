@@ -24,7 +24,8 @@
     
     <div class="item-pricing">
       <span class="item-total-price">${{ Number(totalPrice).toFixed(2) }}</span>
-      <span class="item-unit-price">${{ Number(price).toFixed(2) }} / {{ uom }}</span>
+      <span class="item-total-price-tax">with tax: ${{ totalPriceWithTax.toFixed(2) }}</span>
+      <span class="item-unit-price">${{ Number(price).toFixed(2) }} (with tax: ${{ unitPriceWithTax.toFixed(2) }}) / {{ uom }}</span>
     </div>
     
     <button class="remove-btn" @click="$emit('remove')">
@@ -70,6 +71,14 @@ const formattedQty = computed(() => {
 const totalPrice = computed(() => {
   return parseFloat(props.price) * parseFloat(props.quantity)
 })
+
+const unitPriceWithTax = computed(() => {
+  return parseFloat(props.price) * 1.0825
+})
+
+const totalPriceWithTax = computed(() => {
+  return totalPrice.value * 1.0825
+})
 </script>
 
 <style scoped>
@@ -94,6 +103,7 @@ const totalPrice = computed(() => {
   justify-content: center;
   font-weight: 700;
   color: var(--text-secondary);
+  flex-shrink: 0;
 }
 
 .thumb-initial {
@@ -136,6 +146,8 @@ const totalPrice = computed(() => {
   border-radius: 4px;
   font-weight: 600;
   text-transform: uppercase;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .quantity-controls {
@@ -146,6 +158,7 @@ const totalPrice = computed(() => {
   padding: 4px;
   border-radius: 20px;
   border: 1px solid var(--border-color);
+  flex-shrink: 0;
 }
 
 .qty-btn {
@@ -184,7 +197,8 @@ const totalPrice = computed(() => {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  min-width: 75px;
+  min-width: 85px;
+  flex-shrink: 0;
 }
 
 .item-total-price {
@@ -193,9 +207,16 @@ const totalPrice = computed(() => {
   color: var(--text-primary);
 }
 
-.item-unit-price {
-  font-size: 0.7rem;
+.item-total-price-tax {
+  font-size: 0.72rem;
   color: var(--text-muted);
+  font-weight: 600;
+}
+
+.item-unit-price {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  text-align: right;
 }
 
 .remove-btn {
@@ -209,6 +230,7 @@ const totalPrice = computed(() => {
   align-items: center;
   justify-content: center;
   transition: all var(--transition-fast);
+  flex-shrink: 0;
 }
 
 .remove-btn:hover {

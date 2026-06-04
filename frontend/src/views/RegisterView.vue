@@ -125,7 +125,7 @@
             :uom="item.uom"
             @increase="cartStore.updateQuantity(item.product_id, item.quantity + (item.uom && item.uom !== 'pieces' ? 0.1 : 1))"
             @decrease="cartStore.updateQuantity(item.product_id, item.quantity - (item.uom && item.uom !== 'pieces' ? 0.1 : 1))"
-            @remove="cartStore.removeItem(item.product_id)"
+                        @remove="cartStore.removeFromCart(item.product_id)"
           />
         </div>
         

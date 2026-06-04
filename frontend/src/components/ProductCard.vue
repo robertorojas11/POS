@@ -14,7 +14,10 @@
         <span class="product-sku">{{ sku }}</span>
       </div>
       <div class="product-action-row">
-        <span class="product-price">${{ Number(price).toFixed(2) }}</span>
+        <div class="price-group">
+          <span class="product-price">${{ Number(price).toFixed(2) }}</span>
+          <span class="product-price-tax">incl. tax: ${{ priceWithTax.toFixed(2) }}</span>
+        </div>
         <button class="add-btn" @click.stop="$emit('add')">
           <Plus class="add-icon" />
         </button>
@@ -66,6 +69,10 @@ const stockClass = computed(() => {
   if (s <= 0) return 'out-of-stock'
   if (s <= 5) return 'low-stock'
   return 'in-stock'
+})
+
+const priceWithTax = computed(() => {
+  return parseFloat(props.price) * 1.0825
 })
 </script>
 
@@ -202,5 +209,17 @@ const stockClass = computed(() => {
   width: 16px;
   height: 16px;
   stroke-width: 3px;
+}
+
+.price-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.product-price-tax {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  font-weight: 600;
+  margin-top: 1px;
 }
 </style>
