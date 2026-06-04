@@ -26,7 +26,7 @@ def seed_database():
         print("Seeding users...")
         # Create admin
         admin = User(username="admin", email="admin@apexpos.com", user_type_id=admin_type.id)
-        admin.set_password("securepassword")
+        admin.set_password("admin")
         db.session.add(admin)
 
         # Create manager
