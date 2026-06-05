@@ -11,6 +11,7 @@ Step-by-step user guides for each user role in the system:
 * **[Operator User Manual](file:///D:/ERP/POS/docs/user_manuals/operator_manual.md)**: Daily register operations, decimal UOM entries, offline checkouts, and shift turns.
 * **[Manager User Manual](file:///D:/ERP/POS/docs/user_manuals/manager_manual.md)**: Live register monitoring, cash drops, inventory configuration, and sales auditing.
 * **[Administrator User Manual](file:///D:/ERP/POS/docs/user_manuals/admin_manual.md)**: System configuration, employee role provisioning, and promotional coupon setup.
+* **[Roles & Capabilities Manual](file:///D:/ERP/POS/docs/user_manuals/roles_manual.md)**: Detailed breakdown of the permission levels and access capabilities for Admin, Manager, and Operator roles.
 
 ### 2. Architecture & Directives
 Deep dives into system mechanisms, caching policies, and data synchronization:

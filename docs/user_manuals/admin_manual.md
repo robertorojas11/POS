@@ -17,20 +17,34 @@ There are three user types, defined as follows:
 | **Manager** | `2` | Modify products, review sales history, monitor shifts/cash drawers, view store reports. |
 | **Operator** | `3` | Start/end own shifts, register customers, validate coupons, and checkout sales. |
 
-### 👥 Store Workers Directory
-Admin users have access to the **Store Workers Directory** on their Dashboard.
-- Unlike the Manager's view (which only shows register Operators), the Admin's directory panel lists **all** store workers, including other Admins, Managers, and operators/cashiers.
-- Displays employee username, email, system role, and real-time **Active** (with green indicator dot) or **Offline** status based on active shifts.
+### 👥 Store Workers & Employee Administration
+Admin users can manage the active staff directory and assign them to specific stores (sucursales) from the **Admin View** (`/admin`).
 
-### Provisioning a New User
-To register a new employee:
-1. Make a POST request to `/api/auth/register` (or use the admin registration interface).
-2. Required fields:
-   - `username`: Unique username string.
-   - `email`: Valid email address.
-   - `password`: Secure password.
-   - `role`: Role string (one of `'admin'`, `'manager'`, `'operator'`).
-3. The system maps the string role to the correct relational database `UserType` record.
+#### Tab 1: Employees Directory
+This interface lists all employees registered in the system:
+* **Workers Directory Details**: Displays the employee's username, full name, email, phone number, role, assigned store/sucursal, and shift status (Active/Offline).
+* **Temporary Access Status**: Shows a warning label `Needs password change` next to the username if the employee has not yet logged in and changed their temporary password.
+* **Adding a New Employee**:
+  1. Click **Add Employee** to open the registration form.
+  2. Input: **First Name**, **Last Name**, **Second Last Name (Optional)**, **Email**, **Contact Phone (Optional)**, **Role (Admin, Manager, Operator)**, and **Assigned Store**.
+  3. **Automated Username Generation**: The system automatically generates a unique username using the format:
+     `firstname.first_surname_letter.xy`
+     * `firstname` is the employee's first name (lowercase, spaces removed).
+     * `first_surname_letter` is the first letter of their last name (lowercase).
+     * `x` is the unique store identifier code of their assigned sucursal.
+     * `y` is a 2-character random alphanumeric suffix to guarantee uniqueness.
+     * Example: `john.d.la82` (where `la` is the Los Angeles branch code).
+  4. **Temporal Password**: The system generates a copyable temporary password (e.g. `Temp8472`) and displays it in a green success banner for the admin.
+  5. **Force Password Reset**: On their very first login, the employee is greeted by a non-dismissible password change overlay. They must set a secure password of at least 4 characters to unlock POS access.
+
+#### Tab 2: Sucursales (Stores)
+Manage the business physical locations that employees are assigned to:
+* **Store Parameters**:
+  - **Code**: Unique code identifier (e.g., `la`, `ny`, `mx`). This code is used as the prefix when generating usernames for users assigned to this branch.
+  - **Name**: Store name (e.g., "Los Angeles Downtown", "New York Flagship").
+  - **Location**: City or general region.
+  - **Address**: Detailed physical location.
+* **Registering a Store**: Click **Add Store**, enter the parameters, and click **Save**.
 
 ---
 
