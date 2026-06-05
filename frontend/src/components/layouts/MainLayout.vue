@@ -105,6 +105,7 @@ const submitPasswordChange = async () => {
     alert('Password updated successfully! Welcome to ApexPOS.')
     if (authStore.user) {
       authStore.user.must_change_password = false
+      localStorage.setItem('user', JSON.stringify(authStore.user))
     }
   } catch (err) {
     alert(err.response?.data?.error || 'Failed to update password')

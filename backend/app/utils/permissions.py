@@ -18,7 +18,7 @@ def requires_user_type(*user_type_names):
             
             user = db.session.get(User, int(current_user_id))
             if not user:
-                return jsonify({"error": "User not found"}), 404
+                return jsonify({"error": "User session is invalid. Please log in again."}), 401
                 
             if not user.user_type or user.user_type.name not in user_type_names:
                 return jsonify({

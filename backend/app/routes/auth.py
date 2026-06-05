@@ -82,9 +82,9 @@ def login():
 @jwt_required()
 def me():
     current_user_id = get_jwt_identity()
-    user = User.query.get(int(current_user_id))
+    user = db.session.get(User, int(current_user_id))
     if not user:
-        return jsonify({"error": "User not found"}), 404
+        return jsonify({"error": "User session is invalid. Please log in again."}), 401
     return jsonify(user.to_dict()), 200
 
 
@@ -92,8 +92,11 @@ def me():
 @jwt_required()
 def get_users():
     current_user_id = int(get_jwt_identity())
-    current_user = User.query.get_or_404(current_user_id)
+    current_user = db.session.get(User, current_user_id)
     
+    if not current_user:
+        return jsonify({"error": "User session is invalid. Please log in again."}), 401
+        
     if current_user.user_type.name not in ('Admin', 'Manager'):
         return jsonify({"error": "Access denied"}), 403
         
@@ -174,7 +177,9 @@ def register_employee():
 @jwt_required()
 def change_password():
     current_user_id = int(get_jwt_identity())
-    user = User.query.get_or_404(current_user_id)
+    user = db.session.get(User, current_user_id)
+    if not user:
+        return jsonify({"error": "User session is invalid. Please log in again."}), 401
     data = request.get_json() or {}
     new_password = data.get('new_password')
     
