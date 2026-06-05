@@ -1,6 +1,6 @@
 from flask import Blueprint, jsonify, request, Response
 import json
-from flask_jwt_extended import jwt_required
+from flask_jwt_extended import jwt_required, get_jwt_identity
 from app.models.product import Product, Category
 from app.extensions import db, redis_client
 from app.utils.permissions import requires_user_type
@@ -79,6 +79,9 @@ def create_product():
     barcode = data.get('barcode')
     if barcode == '' or barcode is None:
         barcode = None
+    else:
+        if Product.query.filter_by(barcode=barcode).first():
+            return jsonify({"error": f"Product with barcode '{barcode}' already exists"}), 400
         
     category_id = data.get('category_id')
     if category_id == '' or category_id is None:
@@ -96,7 +99,8 @@ def create_product():
         stock_quantity=float(data.get('stock_quantity', 0)),
         min_stock_level=float(data.get('min_stock_level', 5)),
         uom=data.get('uom', 'pieces'),
-        category_id=category_id
+        category_id=category_id,
+        created_by_id=int(get_jwt_identity())
     )
     
     db.session.add(product)
@@ -117,6 +121,10 @@ def update_product(product_id):
             val = data[field]
             if field == 'barcode' and (val == '' or val is None):
                 val = None
+            elif field == 'barcode' and val is not None:
+                existing = Product.query.filter(Product.barcode == val, Product.id != product_id).first()
+                if existing:
+                    return jsonify({"error": f"Product with barcode '{val}' already exists"}), 400
             elif field == 'category_id' and (val == '' or val is None):
                 val = None
             elif field == 'category_id':
@@ -125,6 +133,7 @@ def update_product(product_id):
                 val = float(val)
             setattr(product, field, val)
             
+    product.updated_by_id = int(get_jwt_identity())
     db.session.commit()
     RedisService.invalidate_products_cache()
     return jsonify(product.to_dict()), 200
