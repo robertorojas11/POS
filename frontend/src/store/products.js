@@ -21,14 +21,27 @@ export const useProductsStore = defineStore('products', {
         console.error('Failed to load products from IndexedDB', err)
       }
     },
-    async fetchProducts(searchParams = {}) {
+    async fetchProducts(searchParams = {}, force = false) {
+      const hasFilters = Object.keys(searchParams).length > 0
+      
+      // If we already have products and are not forcing a refresh, and there are no search parameters, return cached
+      if (this.products.length > 0 && !force && !hasFilters) {
+        return this.products
+      }
+      
       this.loading = true
-      await this.loadFromLocalDb()
+      if (this.products.length === 0) {
+        await this.loadFromLocalDb()
+      }
+      
       try {
         const response = await axios.get('/api/products', { params: searchParams })
-        this.products = response.data
-        await dbPutAll('products', response.data)
-        return this.products
+        // Only overwrite/cache the full list if no search filters were passed
+        if (!hasFilters) {
+          this.products = response.data
+          await dbPutAll('products', response.data)
+        }
+        return response.data
       } catch (err) {
         this.error = 'Failed to load products'
         return this.products
@@ -36,8 +49,13 @@ export const useProductsStore = defineStore('products', {
         this.loading = false
       }
     },
-    async fetchCategories() {
-      await this.loadFromLocalDb()
+    async fetchCategories(force = false) {
+      if (this.categories.length > 0 && !force) {
+        return this.categories
+      }
+      if (this.categories.length === 0) {
+        await this.loadFromLocalDb()
+      }
       try {
         const response = await axios.get('/api/products/categories')
         this.categories = response.data

@@ -10,11 +10,10 @@
             v-model="search" 
             placeholder="Search catalog SKU, name..." 
             class="pos-input with-left-icon"
-            @input="fetchData"
           />
         </div>
         
-        <select v-model="selectedCategory" class="pos-input category-select" @change="fetchData">
+        <select v-model="selectedCategory" class="pos-input category-select">
           <option :value="null">All Categories</option>
           <option v-for="cat in productsStore.categories" :key="cat.id" :value="cat.id">
             {{ cat.name }}
@@ -32,9 +31,9 @@
 
     <!-- Card-Based Catalog Browser -->
     <div class="catalog-cards-panel" v-if="!loading">
-      <div class="catalog-grid" v-if="productsStore.products.length">
+      <div class="catalog-grid" v-if="filteredProducts.length">
         <div 
-          v-for="prod in productsStore.products" 
+          v-for="prod in filteredProducts" 
           :key="prod.id"
           class="catalog-item-card premium-card"
           @click="openDetailsDrawer(prod)"
@@ -247,7 +246,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useProductsStore } from '@/store/products'
 import { Search, Plus, Package, Edit2, X } from 'lucide-vue-next'
 
@@ -298,13 +297,25 @@ const calculateMargin = (prod) => {
   return (((p - c) / p) * 100).toFixed(2)
 }
 
+const filteredProducts = computed(() => {
+  let list = productsStore.products
+  if (selectedCategory.value !== null) {
+    list = list.filter(p => p.category_id === selectedCategory.value)
+  }
+  if (search.value) {
+    const q = search.value.toLowerCase()
+    list = list.filter(p => 
+      p.name.toLowerCase().includes(q) || 
+      p.sku.toLowerCase().includes(q) || 
+      (p.barcode && p.barcode.toLowerCase().includes(q))
+    )
+  }
+  return list
+})
+
 const fetchData = async () => {
   loading.value = true
-  const params = {}
-  if (search.value) params.search = search.value
-  if (selectedCategory.value !== null) params.category_id = selectedCategory.value
-  
-  await productsStore.fetchProducts(params)
+  await productsStore.fetchProducts()
   loading.value = false
 }
 

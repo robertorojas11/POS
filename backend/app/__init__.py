@@ -22,11 +22,13 @@ def create_app(config_name='default'):
     from app.routes.product import product_bp
     from app.routes.sale import sale_bp
     from app.routes.report import report_bp
+    from app.routes.store import store_bp
     
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
     app.register_blueprint(product_bp, url_prefix='/api/products')
     app.register_blueprint(sale_bp, url_prefix='/api/sales')
     app.register_blueprint(report_bp, url_prefix='/api/reports')
+    app.register_blueprint(store_bp, url_prefix='/api/stores')
     
     # Simple Health Check Route
     @app.route('/health')

@@ -30,6 +30,12 @@
           <BarChart3 class="icon" />
         </div>
       </router-link>
+
+      <router-link v-if="authStore.user?.role === 'admin'" to="/admin" class="nav-item" active-class="active" title="Admin Panel">
+        <div class="icon-container">
+          <Settings class="icon" />
+        </div>
+      </router-link>
     </nav>
     
     <div class="bottom-actions">
@@ -44,6 +50,9 @@
 
 <script setup>
 import { LayoutDashboard, Monitor, Package, BarChart3, Settings, LogOut } from 'lucide-vue-next'
+import { useAuthStore } from '@/store/auth'
+
+const authStore = useAuthStore()
 
 defineEmits(['logout'])
 </script>

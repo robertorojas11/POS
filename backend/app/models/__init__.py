@@ -4,6 +4,7 @@ from app.models.inventory import InventoryLog
 from app.models.sale import Sale, SaleItem, Discount
 from app.models.customer import Customer
 from app.models.shift import Shift
+from app.models.store import Store
 
 # All models listed for easy import by migrations / other files
 __all__ = [
@@ -16,5 +17,6 @@ __all__ = [
     'SaleItem',
     'Discount',
     'Customer',
-    'Shift'
+    'Shift',
+    'Store'
 ]

@@ -36,6 +36,12 @@ const routes = [
         path: 'reports',
         name: 'reports',
         component: () => import('@/views/ReportsView.vue')
+      },
+      {
+        path: 'admin',
+        name: 'admin',
+        component: () => import('@/views/AdminView.vue'),
+        meta: { requiresAdmin: true }
       }
     ]
   },
@@ -57,6 +63,8 @@ router.beforeEach((to, from, next) => {
   if (to.meta.requiresAuth && !authStore.isAuthenticated) {
     next({ name: 'login' })
   } else if (to.meta.guestOnly && authStore.isAuthenticated) {
+    next({ name: 'dashboard' })
+  } else if (to.meta.requiresAdmin && authStore.user?.role !== 'admin') {
     next({ name: 'dashboard' })
   } else {
     next()

@@ -440,7 +440,7 @@ const submitPayment = async () => {
     discountInput.value = 0
     promoCode.value = ''
     promoError.value = ''
-    await productsStore.fetchProducts() // refresh stock levels
+    await productsStore.fetchProducts({}, true) // refresh stock levels
     filterProducts()
   } else {
     alert('Checkout failed: ' + cartStore.error)

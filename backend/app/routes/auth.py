@@ -2,6 +2,9 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import create_access_token, create_refresh_token, jwt_required, get_jwt_identity
 from app.extensions import db
 from app.models.user import User, UserType
+from app.utils.permissions import requires_user_type
+import string
+import random
 
 auth_bp = Blueprint('auth', __name__)
 
@@ -101,3 +104,85 @@ def get_users():
         users = User.query.filter_by(user_type_id=3).all()
         
     return jsonify([u.to_dict() for u in users]), 200
+
+
+@auth_bp.route('/employees', methods=['POST'])
+@jwt_required()
+@requires_user_type('Admin')
+def register_employee():
+    data = request.get_json() or {}
+    first_name = data.get('first_name')
+    last_name = data.get('last_name')
+    second_last_name = data.get('second_last_name')
+    email = data.get('email')
+    contact_phone = data.get('contact_phone')
+    user_type_id = data.get('user_type_id', 3)  # default to 3 (Operator/Cashier)
+    store_id = data.get('store_id')
+    
+    if not first_name or not last_name or not email or not store_id:
+        return jsonify({"error": "First name, last name, email, and store assignment are required"}), 400
+        
+    from app.models.store import Store
+    store = db.session.get(Store, store_id)
+    if not store:
+        return jsonify({"error": "Store assignment is invalid"}), 400
+        
+    # Check if email is already taken
+    if User.query.filter_by(email=email).first():
+        return jsonify({"error": "Email is already in use"}), 400
+        
+    # Generate username: firstname.first_surname_letter.xy
+    fn = first_name.strip().lower().replace(" ", "")
+    ln = last_name.strip().lower().replace(" ", "")
+    s_code = store.code.strip().lower()
+    
+    chars = string.ascii_lowercase + string.digits
+    rand_chars = "".join(random.choices(chars, k=2))
+    username = f"{fn}.{ln[0]}.{s_code}{rand_chars}"
+    
+    while User.query.filter_by(username=username).first():
+        rand_chars = "".join(random.choices(chars, k=2))
+        username = f"{fn}.{ln[0]}.{s_code}{rand_chars}"
+        
+    temp_pass = "Temp" + "".join(random.choices(string.digits, k=4))
+    
+    # Create employee user
+    user = User(
+        username=username,
+        email=email,
+        user_type_id=user_type_id,
+        first_name=first_name,
+        last_name=last_name,
+        second_last_name=second_last_name,
+        contact_phone=contact_phone,
+        store_id=store_id,
+        must_change_password=True
+    )
+    user.set_password(temp_pass)
+    
+    db.session.add(user)
+    db.session.commit()
+    
+    return jsonify({
+        "message": "Employee registered successfully",
+        "user": user.to_dict(),
+        "temporal_password": temp_pass
+    }), 201
+
+
+@auth_bp.route('/change-password', methods=['POST'])
+@jwt_required()
+def change_password():
+    current_user_id = int(get_jwt_identity())
+    user = User.query.get_or_404(current_user_id)
+    data = request.get_json() or {}
+    new_password = data.get('new_password')
+    
+    if not new_password or len(new_password) < 4:
+        return jsonify({"error": "Password must be at least 4 characters long"}), 400
+        
+    user.set_password(new_password)
+    user.must_change_password = False
+    db.session.commit()
+    
+    return jsonify({"message": "Password updated successfully"}), 200

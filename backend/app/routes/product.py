@@ -76,9 +76,13 @@ def create_product():
     if Product.query.filter_by(sku=sku).first():
         return jsonify({"error": "Product with this SKU already exists"}), 400
         
+    barcode = data.get('barcode')
+    if barcode == '':
+        barcode = None
+        
     product = Product(
         sku=sku,
-        barcode=data.get('barcode'),
+        barcode=barcode,
         name=name,
         description=data.get('description'),
         price=price,
@@ -104,7 +108,10 @@ def update_product(product_id):
     
     for field in ['name', 'barcode', 'description', 'price', 'cost_price', 'stock_quantity', 'min_stock_level', 'category_id', 'is_active', 'uom']:
         if field in data:
-            setattr(product, field, data[field])
+            val = data[field]
+            if field == 'barcode' and val == '':
+                val = None
+            setattr(product, field, val)
             
     db.session.commit()
     RedisService.invalidate_products_cache()

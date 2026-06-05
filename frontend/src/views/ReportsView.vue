@@ -199,15 +199,15 @@ const mockCashiers = ref([
 const loadReports = async () => {
   loading.value = true
   try {
-    const [catRes, historyRes, prodRes] = await Promise.all([
+    const [catRes, historyRes, prodList] = await Promise.all([
       axios.get('/api/reports/sales-by-category'),
       axios.get('/api/sales/history'),
-      axios.get('/api/products')
+      productsStore.fetchProducts()
     ])
     
     salesByCategory.value = catRes.data
     salesHistory.value = historyRes.data
-    productsCount.value = prodRes.data.length
+    productsCount.value = prodList.length
   } catch (err) {
     console.error('Failed to load reports', err)
   } finally {

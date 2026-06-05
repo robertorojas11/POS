@@ -41,11 +41,20 @@ class User(db.Model):
     last_login = db.Column(db.DateTime, nullable=True)
     last_login_ip = db.Column(db.String(45), nullable=True)
     
+    # Custom profile info
+    first_name = db.Column(db.String(64), nullable=True)
+    last_name = db.Column(db.String(64), nullable=True)
+    second_last_name = db.Column(db.String(64), nullable=True)
+    contact_phone = db.Column(db.String(32), nullable=True)
+    must_change_password = db.Column(db.Boolean, default=True, nullable=False)
+    store_id = db.Column(db.Integer, db.ForeignKey('stores.id'), nullable=True)
+    
     # Relationships
     user_type = db.relationship('UserType', back_populates='users', foreign_keys=[user_type_id])
     sales = db.relationship('Sale', back_populates='cashier', lazy='dynamic', foreign_keys='Sale.cashier_id')
     creator = db.relationship('User', foreign_keys=[created_by_id], remote_side=[id])
     updater = db.relationship('User', foreign_keys=[updated_by_id], remote_side=[id])
+    store = db.relationship('Store', back_populates='users')
     
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
@@ -67,5 +76,13 @@ class User(db.Model):
             'created_by_id': self.created_by_id,
             'updated_by_id': self.updated_by_id,
             'last_login': self.last_login.isoformat() if self.last_login else None,
-            'last_login_ip': self.last_login_ip
+            'last_login_ip': self.last_login_ip,
+            'first_name': self.first_name,
+            'last_name': self.last_name,
+            'second_last_name': self.second_last_name,
+            'contact_phone': self.contact_phone,
+            'must_change_password': self.must_change_password,
+            'store_id': self.store_id,
+            'store_name': self.store.name if self.store else None,
+            'store_code': self.store.code if self.store else None
         }
