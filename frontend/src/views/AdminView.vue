@@ -46,6 +46,7 @@
                 <th>Role</th>
                 <th>Sucursal / Store</th>
                 <th>Status</th>
+                <th style="width: 100px; text-align: right;">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -76,6 +77,16 @@
                     <span class="status-dot"></span>
                     {{ emp.is_active ? 'Active' : 'Inactive' }}
                   </span>
+                </td>
+                <td>
+                  <div class="store-card-footer" style="border-top: none; padding-top: 0; margin: 0; justify-content: flex-end;">
+                    <button class="circle-action-btn edit" @click="openEditEmployeeModal(emp)" title="Edit Employee">
+                      <Edit class="btn-icon-small" />
+                    </button>
+                    <button class="circle-action-btn delete" @click="deleteEmployee(emp.id)" title="Delete Employee">
+                      <Trash2 class="btn-icon-small" />
+                    </button>
+                  </div>
                 </td>
               </tr>
             </tbody>
@@ -184,14 +195,14 @@
     <div class="modal-overlay" v-if="showEmployeeModal" @click="closeEmployeeModal">
       <div class="pos-modal employee-modal" @click.stop>
         <div class="modal-header">
-          <h3>Register New Store Employee</h3>
+          <h3>{{ isEditEmployee ? 'Modify Employee Parameters' : 'Register New Store Employee' }}</h3>
           <button class="close-btn" @click="closeEmployeeModal">
             <X />
           </button>
         </div>
         
         <!-- Registration Form -->
-        <form v-if="!credentialsResult" @submit.prevent="registerEmployee" class="modal-form">
+        <form v-if="!credentialsResult" @submit.prevent="saveEmployee" class="modal-form">
           <div class="form-row">
             <div class="form-group">
               <label>First Name *</label>
@@ -230,7 +241,7 @@
             <div class="form-group">
               <label>Assign to Sucursal *</label>
               <select v-model="empForm.store_id" class="pos-input" required>
-                <option :value="null" disabled>Select Store Assignment</option>
+                <option :value="null">Unassigned / None</option>
                 <option v-for="st in stores" :key="st.id" :value="st.id">
                   {{ st.name }} ({{ st.code.toUpperCase() }})
                 </option>
@@ -238,9 +249,19 @@
             </div>
           </div>
 
+          <div class="form-group checkbox-group" v-if="isEditEmployee">
+            <label class="checkbox-container">
+              <input type="checkbox" v-model="empForm.is_active" />
+              <span class="checkmark"></span>
+              Employee Active (Authorized to log in)
+            </label>
+          </div>
+
           <div class="modal-footer">
             <button type="button" class="pos-btn pos-btn-secondary" @click="closeEmployeeModal">Cancel</button>
-            <button type="submit" class="pos-btn pos-btn-accent">Generate Employee Access</button>
+            <button type="submit" class="pos-btn pos-btn-accent">
+              {{ isEditEmployee ? 'Save Parameters' : 'Generate Employee Access' }}
+            </button>
           </div>
         </form>
 
@@ -309,6 +330,8 @@ const storeForm = ref({
 
 // Employee Modals
 const showEmployeeModal = ref(false)
+const isEditEmployee = ref(false)
+const editEmployeeId = ref(null)
 const empForm = ref({
   first_name: '',
   last_name: '',
@@ -316,7 +339,8 @@ const empForm = ref({
   contact_phone: '',
   email: '',
   user_type_id: 3,
-  store_id: null
+  store_id: null,
+  is_active: true
 })
 
 // Generated Result
@@ -384,8 +408,10 @@ const deleteStore = async (id) => {
   }
 }
 
-// Employee Registration
+// Employee CRUD
 const openEmployeeModal = () => {
+  isEditEmployee.value = false
+  editEmployeeId.value = null
   empForm.value = {
     first_name: '',
     last_name: '',
@@ -393,7 +419,26 @@ const openEmployeeModal = () => {
     contact_phone: '',
     email: '',
     user_type_id: 3,
-    store_id: stores.value.length > 0 ? stores.value[0].id : null
+    store_id: stores.value.length > 0 ? stores.value[0].id : null,
+    is_active: true
+  }
+  credentialsResult.value = null
+  copiedField.value = null
+  showEmployeeModal.value = true
+}
+
+const openEditEmployeeModal = (emp) => {
+  isEditEmployee.value = true
+  editEmployeeId.value = emp.id
+  empForm.value = {
+    first_name: emp.first_name || '',
+    last_name: emp.last_name || '',
+    second_last_name: emp.second_last_name || '',
+    contact_phone: emp.contact_phone || '',
+    email: emp.email || '',
+    user_type_id: emp.user_type_id,
+    store_id: emp.store_id,
+    is_active: emp.is_active
   }
   credentialsResult.value = null
   copiedField.value = null
@@ -406,16 +451,32 @@ const closeEmployeeModal = () => {
   copiedField.value = null
 }
 
-const registerEmployee = async () => {
+const saveEmployee = async () => {
   try {
-    const response = await axios.post('/api/auth/employees', empForm.value)
-    credentialsResult.value = {
-      username: response.data.user.username,
-      password: response.data.temporal_password
+    if (isEditEmployee.value) {
+      await axios.put(`/api/auth/employees/${editEmployeeId.value}`, empForm.value)
+      showEmployeeModal.value = false
+      await loadData()
+    } else {
+      const response = await axios.post('/api/auth/employees', empForm.value)
+      credentialsResult.value = {
+        username: response.data.user.username,
+        password: response.data.temporal_password
+      }
+      await loadData()
     }
+  } catch (err) {
+    alert(err.response?.data?.error || 'Failed to save employee')
+  }
+}
+
+const deleteEmployee = async (id) => {
+  if (!confirm('Are you sure you want to delete this employee? This action is permanent and cannot be undone.')) return
+  try {
+    await axios.delete(`/api/auth/employees/${id}`)
     await loadData()
   } catch (err) {
-    alert(err.response?.data?.error || 'Failed to register new employee')
+    alert(err.response?.data?.error || 'Failed to delete employee')
   }
 }
 

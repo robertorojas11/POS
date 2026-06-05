@@ -37,7 +37,8 @@ def create_store():
         name=name,
         code=code,
         location=data.get('location'),
-        address=data.get('address')
+        address=data.get('address'),
+        created_by_id=int(get_jwt_identity())
     )
     db.session.add(store)
     db.session.commit()
@@ -59,6 +60,7 @@ def update_store(store_id):
     if 'address' in data:
         store.address = data['address']
         
+    store.updated_by_id = int(get_jwt_identity())
     db.session.commit()
     return jsonify(store.to_dict()), 200
 

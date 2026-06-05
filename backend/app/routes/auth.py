@@ -191,3 +191,67 @@ def change_password():
     db.session.commit()
     
     return jsonify({"message": "Password updated successfully"}), 200
+
+
+@auth_bp.route('/employees/<int:user_id>', methods=['PUT'])
+@jwt_required()
+@requires_user_type('Admin')
+def update_employee(user_id):
+    user = db.session.get(User, user_id)
+    if not user:
+        return jsonify({"error": "Employee not found"}), 404
+        
+    data = request.get_json() or {}
+    email = data.get('email')
+    
+    if email and email != user.email:
+        if User.query.filter_by(email=email).first():
+            return jsonify({"error": "Email is already in use by another user"}), 400
+            
+    # Update fields
+    if 'first_name' in data:
+        user.first_name = data['first_name']
+    if 'last_name' in data:
+        user.last_name = data['last_name']
+    if 'second_last_name' in data:
+        user.second_last_name = data['second_last_name']
+    if 'email' in data:
+        user.email = data['email']
+    if 'contact_phone' in data:
+        user.contact_phone = data['contact_phone']
+    if 'user_type_id' in data:
+        user.user_type_id = int(data['user_type_id'])
+    if 'is_active' in data:
+        user.is_active = bool(data['is_active'])
+        
+    if 'store_id' in data:
+        store_id = data['store_id']
+        if store_id == '' or store_id is None:
+            user.store_id = None
+        else:
+            from app.models.store import Store
+            store = db.session.get(Store, int(store_id))
+            if not store:
+                return jsonify({"error": "Assigned store is invalid"}), 400
+            user.store_id = int(store_id)
+            
+    user.updated_by_id = int(get_jwt_identity())
+    db.session.commit()
+    return jsonify(user.to_dict()), 200
+
+
+@auth_bp.route('/employees/<int:user_id>', methods=['DELETE'])
+@jwt_required()
+@requires_user_type('Admin')
+def delete_employee(user_id):
+    user = db.session.get(User, user_id)
+    if not user:
+        return jsonify({"error": "Employee not found"}), 404
+        
+    current_admin_id = int(get_jwt_identity())
+    if user.id == current_admin_id:
+        return jsonify({"error": "You cannot delete your own admin account"}), 400
+        
+    db.session.delete(user)
+    db.session.commit()
+    return jsonify({"message": "Employee deleted successfully"}), 200
