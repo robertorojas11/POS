@@ -21,7 +21,7 @@
         </select>
       </div>
 
-      <div class="catalog-actions">
+      <div class="catalog-actions" v-if="isAdminOrManager">
         <button class="pos-btn pos-btn-accent" @click="openAddModal">
           <Plus class="action-icon" />
           Add Product
@@ -59,7 +59,7 @@
               <span class="cost-price-val">Cost: ${{ Number(prod.cost_price).toFixed(2) }}</span>
             </div>
             
-            <div class="item-card-actions" @click.stop>
+            <div class="item-card-actions" @click.stop v-if="isAdminOrManager">
               <button class="action-circle-btn edit" @click="openEditModal(prod)" title="Edit Product">
                 <Edit2 class="btn-icon" />
               </button>
@@ -248,9 +248,13 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
 import { useProductsStore } from '@/store/products'
+import { useAuthStore } from '@/store/auth'
 import { Search, Plus, Package, Edit2, X } from 'lucide-vue-next'
 
 const productsStore = useProductsStore()
+const authStore = useAuthStore()
+
+const isAdminOrManager = computed(() => ['admin', 'manager'].includes(authStore.user?.role?.toLowerCase()))
 const loading = ref(false)
 const search = ref('')
 const selectedCategory = ref(null)

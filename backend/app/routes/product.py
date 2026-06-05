@@ -77,20 +77,26 @@ def create_product():
         return jsonify({"error": "Product with this SKU already exists"}), 400
         
     barcode = data.get('barcode')
-    if barcode == '':
+    if barcode == '' or barcode is None:
         barcode = None
+        
+    category_id = data.get('category_id')
+    if category_id == '' or category_id is None:
+        category_id = None
+    else:
+        category_id = int(category_id)
         
     product = Product(
         sku=sku,
         barcode=barcode,
         name=name,
         description=data.get('description'),
-        price=price,
-        cost_price=cost_price,
-        stock_quantity=data.get('stock_quantity', 0),
-        min_stock_level=data.get('min_stock_level', 5),
+        price=float(price),
+        cost_price=float(cost_price),
+        stock_quantity=float(data.get('stock_quantity', 0)),
+        min_stock_level=float(data.get('min_stock_level', 5)),
         uom=data.get('uom', 'pieces'),
-        category_id=data.get('category_id')
+        category_id=category_id
     )
     
     db.session.add(product)
@@ -109,8 +115,14 @@ def update_product(product_id):
     for field in ['name', 'barcode', 'description', 'price', 'cost_price', 'stock_quantity', 'min_stock_level', 'category_id', 'is_active', 'uom']:
         if field in data:
             val = data[field]
-            if field == 'barcode' and val == '':
+            if field == 'barcode' and (val == '' or val is None):
                 val = None
+            elif field == 'category_id' and (val == '' or val is None):
+                val = None
+            elif field == 'category_id':
+                val = int(val)
+            elif field in ('price', 'cost_price', 'stock_quantity', 'min_stock_level') and val is not None:
+                val = float(val)
             setattr(product, field, val)
             
     db.session.commit()
