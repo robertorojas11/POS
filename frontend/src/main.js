@@ -13,6 +13,12 @@ if (!terminalId) {
 }
 axios.defaults.headers.common['X-Terminal-Id'] = terminalId
 
+// Restore Authorization header if token exists to prevent 401s on browser refresh
+const token = localStorage.getItem('token')
+if (token) {
+  axios.defaults.headers.common['Authorization'] = `Bearer ${token}`
+}
+
 const app = createApp(App)
 const pinia = createPinia()
 
