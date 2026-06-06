@@ -14,12 +14,20 @@ class ShiftTestCase(unittest.TestCase):
         self.app_context.push()
         self.client = self.app.test_client()
         db.create_all()
+        db.session.execute(db.delete(Discount))
+        db.session.execute(db.delete(Sale))
+        db.session.execute(db.delete(Shift))
+        db.session.execute(db.delete(Product))
+        db.session.execute(db.delete(Category))
+        db.session.execute(db.delete(User))
+        db.session.execute(db.delete(UserType))
+        db.session.commit()
         
         # Seed user types
-        admin_type = UserType(id=1, name="Admin")
-        manager_type = UserType(id=2, name="Manager")
-        operator_type = UserType(id=3, name="Operator")
-        db.session.add_all([admin_type, manager_type, operator_type])
+        for ut_id, ut_name in [(1, "Admin"), (2, "Manager"), (3, "Operator")]:
+            if not db.session.get(UserType, ut_id):
+                db.session.add(UserType(id=ut_id, name=ut_name))
+        db.session.commit()
         
         # Create cashier user
         self.cashier = User(username="cashier1", email="cashier1@example.com", user_type_id=3)

@@ -159,7 +159,9 @@ def register_employee():
         second_last_name=second_last_name,
         contact_phone=contact_phone,
         store_id=store_id,
-        must_change_password=True
+        must_change_password=True,
+        created_by_id=int(get_jwt_identity()),
+        updated_by_id=int(get_jwt_identity())
     )
     user.set_password(temp_pass)
     
@@ -188,6 +190,7 @@ def change_password():
         
     user.set_password(new_password)
     user.must_change_password = False
+    user.updated_by_id = current_user_id
     db.session.commit()
     
     return jsonify({"message": "Password updated successfully"}), 200

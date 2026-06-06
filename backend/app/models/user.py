@@ -54,7 +54,7 @@ class User(db.Model):
     sales = db.relationship('Sale', back_populates='cashier', lazy='dynamic', foreign_keys='Sale.cashier_id')
     creator = db.relationship('User', foreign_keys=[created_by_id], remote_side=[id])
     updater = db.relationship('User', foreign_keys=[updated_by_id], remote_side=[id])
-    store = db.relationship('Store', back_populates='users')
+    store = db.relationship('Store', back_populates='users', foreign_keys=[store_id])
     
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
