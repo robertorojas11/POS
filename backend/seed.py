@@ -50,12 +50,12 @@ def seed_database():
 
         print("Seeding products...")
         products = [
-            Product(sku="BEV-COLA-01", barcode="012000000133", name="Classic Cola 12oz", description="Refreshing carbonated cola", price=1.99, cost_price=0.60, stock_quantity=120, min_stock_level=15, category_id=beverages.id),
-            Product(sku="BEV-COFF-02", barcode="043000045321", name="Organic Dark Coffee", description="Rich roasted coffee beans brew", price=3.49, cost_price=1.10, stock_quantity=45, min_stock_level=10, category_id=beverages.id),
-            Product(sku="SNK-CHIP-01", barcode="028400091496", name="Sea Salt Potato Chips", description="Crispy salted potato chips", price=2.99, cost_price=1.20, stock_quantity=3, min_stock_level=10, category_id=snacks.id), # Low stock!
-            Product(sku="SNK-CHOC-02", barcode="034000002451", name="Milk Chocolate Bar", description="Creamy milk chocolate block", price=1.79, cost_price=0.75, stock_quantity=80, min_stock_level=15, category_id=snacks.id),
-            Product(sku="ELC-USBC-01", barcode="884838291044", name="Braided USB-C Cable 6ft", description="High-speed charging USB type C cable", price=9.99, cost_price=3.50, stock_quantity=25, min_stock_level=5, category_id=electronics.id),
-            Product(sku="APP-TSHR-01", barcode="729381029381", name="ApexPOS Logo T-Shirt", description="100% Cotton branded graphic tee", price=19.99, cost_price=8.00, stock_quantity=15, min_stock_level=3, category_id=apparel.id)
+            Product(sku="BEV-COLA-01", barcode="012000000133", name="Classic Cola 12oz", description="Refreshing carbonated cola", price=1.99, cost_price=0.60, stock_quantity=120, min_stock_level=15, min_sale_qty=1.0, category_id=beverages.id),
+            Product(sku="BEV-COFF-02", barcode="043000045321", name="Organic Dark Coffee", description="Rich roasted coffee beans brew", price=3.49, cost_price=1.10, stock_quantity=45, min_stock_level=10, min_sale_qty=1.0, category_id=beverages.id),
+            Product(sku="SNK-CHIP-01", barcode="028400091496", name="Sea Salt Potato Chips", description="Crispy salted potato chips", price=2.99, cost_price=1.20, stock_quantity=3, min_stock_level=10, min_sale_qty=1.0, category_id=snacks.id), # Low stock!
+            Product(sku="SNK-CHOC-02", barcode="034000002451", name="Milk Chocolate Bar", description="Creamy milk chocolate block", price=1.79, cost_price=0.75, stock_quantity=80, min_stock_level=15, min_sale_qty=1.0, category_id=snacks.id),
+            Product(sku="ELC-USBC-01", barcode="884838291044", name="Braided USB-C Cable 6ft", description="High-speed charging USB type C cable", price=9.99, cost_price=3.50, stock_quantity=25, min_stock_level=5, min_sale_qty=1.0, category_id=electronics.id),
+            Product(sku="APP-TSHR-01", barcode="729381029381", name="ApexPOS Logo T-Shirt", description="100% Cotton branded graphic tee", price=19.99, cost_price=8.00, stock_quantity=15, min_stock_level=3, min_sale_qty=1.0, category_id=apparel.id)
         ]
         
         db.session.add_all(products)
