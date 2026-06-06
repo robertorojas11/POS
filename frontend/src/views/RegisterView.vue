@@ -59,6 +59,7 @@
             :stock="prod.stock_quantity"
             :uom="prod.uom"
             @add="addToCart(prod)"
+            @open-details="openProductDetails(prod)"
           />
         </div>
         
@@ -320,6 +321,103 @@
         </div>
       </div>
     </div>
+
+    <!-- Modal: Product Details and Cart Adjustment -->
+    <div class="modal-overlay" v-if="showDetailsModal" @click.self="showDetailsModal = false">
+      <div class="product-details-modal premium-card">
+        <div class="modal-header">
+          <div class="modal-header-title">
+            <h3>Product Details</h3>
+            <span class="product-sku-badge">{{ selectedProduct.sku }}</span>
+          </div>
+          <button class="modal-close-x" @click="showDetailsModal = false">&times;</button>
+        </div>
+
+        <div class="modal-body" v-if="selectedProduct">
+          <div class="product-primary-info">
+            <h4 class="product-detail-name">{{ selectedProduct.name }}</h4>
+            <p class="product-detail-desc" v-if="selectedProduct.description">{{ selectedProduct.description }}</p>
+            <p class="product-detail-desc empty-desc" v-else>No description available for this product.</p>
+          </div>
+
+          <div class="details-grid">
+            <div class="detail-item">
+              <span class="detail-label">Base Price (Excl. Tax)</span>
+              <span class="detail-value">${{ parseFloat(selectedProduct.price).toFixed(2) }} / {{ getDisplayUom(selectedProduct.uom) }}</span>
+            </div>
+            <div class="detail-item">
+              <span class="detail-label">Price with Tax (8.25%)</span>
+              <span class="detail-value highlight-price">${{ (parseFloat(selectedProduct.price) * 1.0825).toFixed(2) }} / {{ getDisplayUom(selectedProduct.uom) }}</span>
+            </div>
+            <div class="detail-item">
+              <span class="detail-label">Inventory Stock</span>
+              <span class="detail-value" :class="getStockClass(selectedProduct.stock_quantity)">
+                {{ formatInventoryQty(selectedProduct.stock_quantity) }} {{ getDisplayUom(selectedProduct.uom) }}
+              </span>
+            </div>
+          </div>
+
+          <div class="cart-adjuster-section">
+            <span class="adjuster-label">Adjust Quantity in Cart</span>
+            
+            <div class="qty-adjuster-controls">
+              <button 
+                class="modal-qty-btn" 
+                @click="decreaseModalQty"
+                :disabled="modalQty <= 0"
+              >
+                <Minus class="modal-qty-icon" />
+              </button>
+              
+              <div class="modal-qty-input-wrapper">
+                <input 
+                  type="number" 
+                  class="modal-qty-input" 
+                  :value="modalQty" 
+                  @input="handleModalQtyInput"
+                  min="0"
+                  :max="selectedProduct.stock_quantity"
+                  step="any"
+                />
+                <span class="modal-qty-uom">{{ getDisplayUom(selectedProduct.uom) }}</span>
+              </div>
+              
+              <button 
+                class="modal-qty-btn" 
+                @click="increaseModalQty"
+                :disabled="modalQty >= parseFloat(selectedProduct.stock_quantity)"
+              >
+                <Plus class="modal-qty-icon" />
+              </button>
+            </div>
+
+            <!-- Quick amounts for continuous UOM items in the modal -->
+            <div class="modal-quick-amounts" v-if="isContinuousProduct(selectedProduct)">
+              <button class="modal-amount-btn" :disabled="parseFloat(selectedProduct.stock_quantity) < 0.25" @click="modalQty = 0.25">1/4 ({{ getUomLabel250(selectedProduct.uom) }})</button>
+              <button class="modal-amount-btn" :disabled="parseFloat(selectedProduct.stock_quantity) < 0.50" @click="modalQty = 0.50">1/2 ({{ getUomLabel500(selectedProduct.uom) }})</button>
+              <button class="modal-amount-btn" :disabled="parseFloat(selectedProduct.stock_quantity) < 0.75" @click="modalQty = 0.75">3/4 ({{ getUomLabel750(selectedProduct.uom) }})</button>
+              <button class="modal-amount-btn" :disabled="parseFloat(selectedProduct.stock_quantity) < 1.00" @click="modalQty = 1.00">1.0 ({{ getDisplayUom(selectedProduct.uom) }})</button>
+            </div>
+
+            <!-- Estimated total cost of item in cart -->
+            <div class="modal-item-total" v-if="modalQty > 0">
+              <span class="total-calc-label">Total for Cart:</span>
+              <div class="total-calc-vals">
+                <span class="val-excl">${{ (parseFloat(selectedProduct.price) * modalQty).toFixed(2) }} (Excl. Tax)</span>
+                <span class="val-incl">${{ (parseFloat(selectedProduct.price) * 1.0825 * modalQty).toFixed(2) }} (With Tax)</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="finalize-actions">
+          <button class="pos-btn pos-btn-secondary" @click="showDetailsModal = false">Cancel</button>
+          <button class="pos-btn pos-btn-accent apply-cart-btn" @click="applyModalQty">
+            Apply to Cart
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -331,7 +429,7 @@ import ProductCard from '@/components/ProductCard.vue'
 import TransactionItem from '@/components/TransactionItem.vue'
 import PaymentSelector from '@/components/PaymentSelector.vue'
 import axios from 'axios'
-import { Search, Barcode, Trash2, UserPlus, UserCheck, X, ShoppingCart, Tag, Package } from 'lucide-vue-next'
+import { Search, Barcode, Trash2, UserPlus, UserCheck, X, ShoppingCart, Tag, Package, Plus, Minus } from 'lucide-vue-next'
 
 const productsStore = useProductsStore()
 const cartStore = useCartStore()
@@ -347,6 +445,9 @@ const promoError = ref('')
 const showCheckoutModal = ref(false)
 const showCustomerModal = ref(false)
 const showSuspendedModal = ref(false)
+const showDetailsModal = ref(false)
+const selectedProduct = ref(null)
+const modalQty = ref(0)
 
 // Checkout values
 const paymentMethod = ref('cash')
@@ -359,6 +460,117 @@ const newCustomer = ref({ name: '', phone: '', email: '' })
 
 const filteredProducts = ref([])
 const selectedCategoryId = ref(null)
+
+// Product Details & Cart Adjuster Helpers
+const isContinuousProduct = (product) => {
+  if (!product) return false
+  const u = product.uom?.toLowerCase()
+  return ['kilograms', 'liters', 'litters', 'pounds', 'ounces'].includes(u)
+}
+
+const getProductStep = (product) => {
+  return isContinuousProduct(product) ? 0.25 : 1.00
+}
+
+const openProductDetails = (product) => {
+  selectedProduct.value = product
+  const cartItem = cartStore.items.find(item => item.product_id === product.id)
+  modalQty.value = cartItem ? cartItem.quantity : 0
+  showDetailsModal.value = true
+}
+
+const increaseModalQty = () => {
+  if (!selectedProduct.value) return
+  const step = getProductStep(selectedProduct.value)
+  const maxStock = parseFloat(selectedProduct.value.stock_quantity)
+  const newQty = parseFloat((modalQty.value + step).toFixed(3))
+  modalQty.value = Math.min(newQty, maxStock)
+}
+
+const decreaseModalQty = () => {
+  if (!selectedProduct.value) return
+  const step = getProductStep(selectedProduct.value)
+  const newQty = parseFloat((modalQty.value - step).toFixed(3))
+  modalQty.value = Math.max(0, newQty)
+}
+
+const handleModalQtyInput = (event) => {
+  if (!selectedProduct.value) return
+  let val = parseFloat(event.target.value)
+  if (isNaN(val) || val < 0) {
+    val = 0
+  }
+  const maxStock = parseFloat(selectedProduct.value.stock_quantity)
+  modalQty.value = Math.min(val, maxStock)
+}
+
+const applyModalQty = () => {
+  if (!selectedProduct.value) return
+  const qty = modalQty.value
+  if (qty <= 0) {
+    cartStore.removeFromCart(selectedProduct.value.id)
+  } else {
+    const existing = cartStore.items.find(item => item.product_id === selectedProduct.value.id)
+    if (!existing) {
+      cartStore.addToCart(selectedProduct.value)
+    }
+    cartStore.updateQuantity(selectedProduct.value.id, qty)
+  }
+  showDetailsModal.value = false
+  selectedProduct.value = null
+}
+
+const getDisplayUom = (uom) => {
+  const map = {
+    'pieces': 'pz',
+    'kilograms': 'kg',
+    'liters': 'l',
+    'litters': 'l',
+    'pounds': 'lb',
+    'ounces': 'oz',
+    'meters': 'm'
+  }
+  return map[uom?.toLowerCase()] || uom || 'pz'
+}
+
+const getStockClass = (stock) => {
+  const s = parseFloat(stock)
+  if (s <= 0) return 'stock-out'
+  if (s <= 5) return 'stock-low'
+  return 'stock-in'
+}
+
+const formatInventoryQty = (stock) => {
+  const s = parseFloat(stock)
+  return Number.isInteger(s) ? s.toString() : s.toFixed(3)
+}
+
+const getUomLabel250 = (uom) => {
+  const u = uom?.toLowerCase()
+  if (u === 'kilograms') return '250g'
+  if (u === 'liters' || u === 'litters') return '250ml'
+  if (u === 'pounds') return '1/4 lb'
+  if (u === 'ounces') return '1/4 oz'
+  return '0.25'
+}
+
+const getUomLabel500 = (uom) => {
+  const u = uom?.toLowerCase()
+  if (u === 'kilograms') return '500g'
+  if (u === 'liters' || u === 'litters') return '500ml'
+  if (u === 'pounds') return '1/2 lb'
+  if (u === 'ounces') return '1/2 oz'
+  return '0.50'
+}
+
+const getUomLabel750 = (uom) => {
+  const u = uom?.toLowerCase()
+  if (u === 'kilograms') return '750g'
+  if (u === 'liters' || u === 'litters') return '750ml'
+  if (u === 'pounds') return '3/4 lb'
+  if (u === 'ounces') return '3/4 oz'
+  return '0.75'
+}
 
 const filterProducts = () => {
   let list = productsStore.products
@@ -1189,5 +1401,267 @@ onMounted(async () => {
   border-radius: 50%;
   animation: spin 1s linear infinite;
   margin: 20px auto;
+}
+
+/* Product Details Modal Styling */
+.product-details-modal {
+  width: 480px;
+  max-width: 95%;
+  padding: 28px !important;
+  animation: modalFade 0.25s ease-out;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.modal-header-title {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.modal-header-title h3 {
+  margin-bottom: 0 !important;
+}
+
+.product-sku-badge {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-family: monospace;
+  background-color: var(--border-color);
+  padding: 2px 6px;
+  border-radius: 4px;
+  align-self: flex-start;
+}
+
+.product-primary-info {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.product-detail-name {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.product-detail-desc {
+  font-size: 0.88rem;
+  color: var(--text-secondary);
+  line-height: 1.4;
+  margin: 0;
+}
+
+.product-detail-desc.empty-desc {
+  font-style: italic;
+  color: var(--text-muted);
+}
+
+.details-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 14px;
+  margin-bottom: 16px;
+}
+
+.detail-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.detail-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.detail-value {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.detail-value.highlight-price {
+  color: var(--accent-lime-hover);
+}
+
+.detail-value.stock-in {
+  color: var(--accent-success);
+}
+
+.detail-value.stock-low {
+  color: var(--accent-warning);
+}
+
+.detail-value.stock-out {
+  color: var(--accent-danger);
+}
+
+.cart-adjuster-section {
+  border-top: 1px solid var(--border-color);
+  padding-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.adjuster-label {
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  letter-spacing: 0.5px;
+}
+
+.qty-adjuster-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin: 8px 0;
+}
+
+.modal-qty-btn {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.modal-qty-btn:hover:not(:disabled) {
+  background-color: var(--border-color);
+  transform: scale(1.05);
+}
+
+.modal-qty-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.modal-qty-icon {
+  width: 18px;
+  height: 18px;
+  stroke-width: 2.5px;
+}
+
+.modal-qty-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1;
+  max-width: 160px;
+}
+
+.modal-qty-input {
+  width: 100%;
+  padding: 10px 48px 10px 16px;
+  font-size: 1.25rem;
+  font-weight: 700;
+  text-align: center;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+  background-color: var(--bg-card);
+  color: var(--text-primary);
+}
+
+.modal-qty-input:focus {
+  border-color: var(--accent-lime);
+  outline: none;
+}
+
+.modal-qty-uom {
+  position: absolute;
+  right: 16px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.modal-quick-amounts {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 4px;
+}
+
+.modal-amount-btn {
+  flex: 1;
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  padding: 6px 0;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.modal-amount-btn:hover:not(:disabled) {
+  background-color: var(--border-color);
+  color: var(--text-primary);
+}
+
+.modal-amount-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.modal-item-total {
+  background-color: rgba(184, 241, 90, 0.04);
+  border: 1px dashed rgba(184, 241, 90, 0.2);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.total-calc-label {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+.total-calc-vals {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.val-excl {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.val-incl {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: var(--accent-lime-hover);
+}
+
+.apply-cart-btn {
+  background-color: var(--accent-lime);
+  color: var(--accent-lime-text);
+  font-weight: 700;
 }
 </style>

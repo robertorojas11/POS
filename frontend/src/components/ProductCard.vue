@@ -1,11 +1,11 @@
 <template>
-  <div class="product-card" @click="$emit('add')">
+  <div class="product-card" @click="$emit('open-details')">
     <div class="product-image-container">
       <div class="product-placeholder">
         <span class="product-initials">{{ initials }}</span>
       </div>
       <div class="stock-badge" :class="stockClass">
-        {{ formattedStock }} {{ displayUom }}
+        {{ baseUnitLabel }}
       </div>
     </div>
     <div class="product-info">
@@ -53,7 +53,7 @@ const props = defineProps({
   }
 })
 
-defineEmits(['add'])
+defineEmits(['add', 'open-details'])
 
 const initials = computed(() => {
   return props.name?.split(' ').slice(0, 2).map(n => n[0]).join('').toUpperCase() || 'P'
@@ -86,6 +86,15 @@ const displayUom = computed(() => {
     'meters': 'm'
   }
   return map[props.uom?.toLowerCase()] || props.uom
+})
+
+const baseUnitLabel = computed(() => {
+  const uomLower = props.uom?.toLowerCase()
+  if (uomLower === 'kilograms') return 'per 250g'
+  if (uomLower === 'liters' || uomLower === 'litters') return 'per 250ml'
+  if (uomLower === 'pounds') return 'per 1/4 lb'
+  if (uomLower === 'ounces') return 'per 1/4 oz'
+  return `1 ${displayUom.value}`
 })
 </script>
 
