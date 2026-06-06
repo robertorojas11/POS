@@ -311,9 +311,9 @@
               </p>
             </div>
             <div class="export-actions">
-              <button class="pos-btn pos-btn-secondary" @click="exportExcel">
+              <button class="pos-btn pos-btn-secondary" @click="exportCSV">
                 <Download class="btn-icon" />
-                Export to Excel
+                Export to CSV
               </button>
               <button class="pos-btn pos-btn-secondary" @click="exportPDF">
                 <Printer class="btn-icon" />
@@ -659,30 +659,40 @@ const summaryStats = computed(() => {
   }
 })
 
-// Export Excel Spreadsheet
-const exportExcel = () => {
+// Export CSV Spreadsheet
+const exportCSV = () => {
   if (!customReportResult.value) return
   const cols = currentColumns.value
   const data = customReportResult.value.data
   
+  const escapeCSV = (val) => {
+    if (val === null || val === undefined) return ''
+    let str = String(val)
+    if (str.includes(',') || str.includes('\n') || str.includes('"')) {
+      str = '"' + str.replace(/"/g, '""') + '"'
+    }
+    return str
+  }
+
   // Format headers
-  const header = cols.map(c => c.label).join('\t')
+  const header = cols.map(c => escapeCSV(c.label)).join(',')
   
   // Format rows
   const rows = data.map(row => {
     return cols.map(col => {
       const val = row[col.key]
-      return col.format ? col.format(val) : val
-    }).join('\t')
+      const formatted = col.format ? col.format(val) : val
+      return escapeCSV(formatted)
+    }).join(',')
   }).join('\n')
   
   const content = '\uFEFF' + header + '\n' + rows
-  const blob = new Blob([content], { type: 'application/vnd.ms-excel;charset=utf-8;' })
+  const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' })
   const url = URL.createObjectURL(blob)
   
   const link = document.createElement("a")
   link.href = url
-  link.setAttribute("download", `report_${customReportResult.value.metric}_${customReportResult.value.start_date}_to_${customReportResult.value.end_date}.xls`)
+  link.setAttribute("download", `report_${customReportResult.value.metric}_${customReportResult.value.start_date}_to_${customReportResult.value.end_date}.csv`)
   document.body.appendChild(link)
   link.click()
   document.body.removeChild(link)
