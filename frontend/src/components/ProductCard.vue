@@ -50,6 +50,10 @@ const props = defineProps({
   uom: {
     type: String,
     default: 'pieces'
+  },
+  minSaleQty: {
+    type: [Number, String],
+    default: 1.0
   }
 })
 
@@ -89,12 +93,28 @@ const displayUom = computed(() => {
 })
 
 const baseUnitLabel = computed(() => {
-  const uomLower = props.uom?.toLowerCase()
-  if (uomLower === 'kilograms') return 'per 250g'
-  if (uomLower === 'liters' || uomLower === 'litters') return 'per 250ml'
-  if (uomLower === 'pounds') return 'per 1/4 lb'
-  if (uomLower === 'ounces') return 'per 1/4 oz'
-  return `1 ${displayUom.value}`
+  const m = parseFloat(props.minSaleQty)
+  if (m === 0.25) {
+    const uomLower = props.uom?.toLowerCase()
+    if (uomLower === 'kilograms') return 'per 250g'
+    if (uomLower === 'liters' || uomLower === 'litters') return 'per 250ml'
+    if (uomLower === 'pounds') return 'per 1/4 lb'
+    if (uomLower === 'ounces') return 'per 1/4 oz'
+  } else if (m === 0.5) {
+    const uomLower = props.uom?.toLowerCase()
+    if (uomLower === 'kilograms') return 'per 500g'
+    if (uomLower === 'liters' || uomLower === 'litters') return 'per 500ml'
+    if (uomLower === 'pounds') return 'per 1/2 lb'
+    if (uomLower === 'ounces') return 'per 1/2 oz'
+  } else if (m === 0.75) {
+    const uomLower = props.uom?.toLowerCase()
+    if (uomLower === 'kilograms') return 'per 750g'
+    if (uomLower === 'liters' || uomLower === 'litters') return 'per 750ml'
+    if (uomLower === 'pounds') return 'per 3/4 lb'
+    if (uomLower === 'ounces') return 'per 3/4 oz'
+  }
+  
+  return `${m} ${displayUom.value}`
 })
 </script>
 

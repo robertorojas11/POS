@@ -58,6 +58,7 @@
             :price="prod.price"
             :stock="prod.stock_quantity"
             :uom="prod.uom"
+            :min-sale-qty="prod.min_sale_qty"
             @add="addToCart(prod)"
             @open-details="openProductDetails(prod)"
           />
@@ -391,13 +392,7 @@
               </button>
             </div>
 
-            <!-- Quick amounts for continuous UOM items in the modal -->
-            <div class="modal-quick-amounts" v-if="isContinuousProduct(selectedProduct)">
-              <button class="modal-amount-btn" :disabled="parseFloat(selectedProduct.stock_quantity) < 0.25" @click="modalQty = 0.25">1/4 ({{ getUomLabel250(selectedProduct.uom) }})</button>
-              <button class="modal-amount-btn" :disabled="parseFloat(selectedProduct.stock_quantity) < 0.50" @click="modalQty = 0.50">1/2 ({{ getUomLabel500(selectedProduct.uom) }})</button>
-              <button class="modal-amount-btn" :disabled="parseFloat(selectedProduct.stock_quantity) < 0.75" @click="modalQty = 0.75">3/4 ({{ getUomLabel750(selectedProduct.uom) }})</button>
-              <button class="modal-amount-btn" :disabled="parseFloat(selectedProduct.stock_quantity) < 1.00" @click="modalQty = 1.00">1.0 ({{ getDisplayUom(selectedProduct.uom) }})</button>
-            </div>
+
 
             <!-- Estimated total cost of item in cart -->
             <div class="modal-item-total" v-if="modalQty > 0">
@@ -462,14 +457,9 @@ const filteredProducts = ref([])
 const selectedCategoryId = ref(null)
 
 // Product Details & Cart Adjuster Helpers
-const isContinuousProduct = (product) => {
-  if (!product) return false
-  const u = product.uom?.toLowerCase()
-  return ['kilograms', 'liters', 'litters', 'pounds', 'ounces'].includes(u)
-}
-
 const getProductStep = (product) => {
-  return isContinuousProduct(product) ? 0.25 : 1.00
+  if (!product) return 1.00
+  return parseFloat(product.min_sale_qty || 1.00)
 }
 
 const openProductDetails = (product) => {
@@ -545,32 +535,7 @@ const formatInventoryQty = (stock) => {
   return Number.isInteger(s) ? s.toString() : s.toFixed(3)
 }
 
-const getUomLabel250 = (uom) => {
-  const u = uom?.toLowerCase()
-  if (u === 'kilograms') return '250g'
-  if (u === 'liters' || u === 'litters') return '250ml'
-  if (u === 'pounds') return '1/4 lb'
-  if (u === 'ounces') return '1/4 oz'
-  return '0.25'
-}
 
-const getUomLabel500 = (uom) => {
-  const u = uom?.toLowerCase()
-  if (u === 'kilograms') return '500g'
-  if (u === 'liters' || u === 'litters') return '500ml'
-  if (u === 'pounds') return '1/2 lb'
-  if (u === 'ounces') return '1/2 oz'
-  return '0.50'
-}
-
-const getUomLabel750 = (uom) => {
-  const u = uom?.toLowerCase()
-  if (u === 'kilograms') return '750g'
-  if (u === 'liters' || u === 'litters') return '750ml'
-  if (u === 'pounds') return '3/4 lb'
-  if (u === 'ounces') return '3/4 oz'
-  return '0.75'
-}
 
 const filterProducts = () => {
   let list = productsStore.products

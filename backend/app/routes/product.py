@@ -98,6 +98,7 @@ def create_product():
         cost_price=float(cost_price),
         stock_quantity=float(data.get('stock_quantity', 0)),
         min_stock_level=float(data.get('min_stock_level', 5)),
+        min_sale_qty=float(data.get('min_sale_qty', 1.0)),
         uom=data.get('uom', 'pieces'),
         category_id=category_id,
         created_by_id=int(get_jwt_identity())
@@ -116,7 +117,7 @@ def update_product(product_id):
     product = Product.query.get_or_404(product_id)
     data = request.get_json() or {}
     
-    for field in ['name', 'barcode', 'description', 'price', 'cost_price', 'stock_quantity', 'min_stock_level', 'category_id', 'is_active', 'uom']:
+    for field in ['name', 'barcode', 'description', 'price', 'cost_price', 'stock_quantity', 'min_stock_level', 'category_id', 'is_active', 'uom', 'min_sale_qty']:
         if field in data:
             val = data[field]
             if field == 'barcode' and (val == '' or val is None):
@@ -129,7 +130,7 @@ def update_product(product_id):
                 val = None
             elif field == 'category_id':
                 val = int(val)
-            elif field in ('price', 'cost_price', 'stock_quantity', 'min_stock_level') and val is not None:
+            elif field in ('price', 'cost_price', 'stock_quantity', 'min_stock_level', 'min_sale_qty') and val is not None:
                 val = float(val)
             setattr(product, field, val)
             

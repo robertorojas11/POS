@@ -129,6 +129,10 @@
                 <span class="kpi-label">Min Alert Level</span>
                 <span class="kpi-val">{{ formatDecimal(selectedProductDetails.min_stock_level) }}</span>
               </div>
+              <div class="drawer-kpi-pill">
+                <span class="kpi-label">Min Sale Qty</span>
+                <span class="kpi-val">{{ formatDecimal(selectedProductDetails.min_sale_qty) }}</span>
+              </div>
             </div>
           </div>
 
@@ -206,6 +210,11 @@
             </div>
 
             <div class="form-group">
+              <label class="pos-label">Min Sale Quantity (Step)</label>
+              <input type="number" v-model="formData.min_sale_qty" class="pos-input" min="0.001" step="any" required />
+            </div>
+
+            <div class="form-group">
               <label class="pos-label">Unit of Measurement (UOM)</label>
               <select v-model="formData.uom" class="pos-input">
                 <option value="pieces">pieces - pz</option>
@@ -277,6 +286,7 @@ const formData = ref({
   cost_price: 0,
   stock_quantity: 0,
   min_stock_level: 5,
+  min_sale_qty: 1.0,
   uom: 'pieces',
   category_id: null,
   is_active: true
@@ -340,6 +350,7 @@ const openAddModal = () => {
     cost_price: 0,
     stock_quantity: 0,
     min_stock_level: 5,
+    min_sale_qty: 1.0,
     uom: 'pieces',
     category_id: null,
     is_active: true
@@ -359,6 +370,7 @@ const openEditModal = (prod) => {
     cost_price: prod.cost_price,
     stock_quantity: prod.stock_quantity,
     min_stock_level: prod.min_stock_level,
+    min_sale_qty: prod.min_sale_qty || 1.0,
     uom: prod.uom || 'pieces',
     category_id: prod.category_id,
     is_active: prod.is_active

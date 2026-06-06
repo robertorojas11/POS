@@ -40,6 +40,7 @@ class Product(db.Model):
     cost_price = db.Column(db.Numeric(10, 2), nullable=False)
     stock_quantity = db.Column(db.Numeric(10, 3), default=0.000, nullable=False)
     min_stock_level = db.Column(db.Numeric(10, 3), default=5.000, nullable=False)
+    min_sale_qty = db.Column(db.Numeric(10, 3), default=1.000, nullable=False)
     uom = db.Column(db.String(32), default='pieces', nullable=False)
     is_active = db.Column(db.Boolean, default=True, nullable=False)
     category_id = db.Column(db.Integer, db.ForeignKey('categories.id'), nullable=True)
@@ -66,6 +67,7 @@ class Product(db.Model):
             'cost_price': float(self.cost_price),
             'stock_quantity': float(self.stock_quantity),
             'min_stock_level': float(self.min_stock_level),
+            'min_sale_qty': float(self.min_sale_qty),
             'uom': self.uom,
             'is_active': self.is_active,
             'category_id': self.category_id,

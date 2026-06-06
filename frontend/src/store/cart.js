@@ -46,13 +46,12 @@ export const useCartStore = defineStore('cart', {
       }
     },
     addToCart(product) {
-      const isContinuous = ['kilograms', 'liters', 'litters', 'pounds', 'ounces'].includes(product.uom?.toLowerCase())
-      const initialQty = isContinuous ? 0.25 : 1.00
+      const step = parseFloat(product.min_sale_qty || (['kilograms', 'liters', 'litters', 'pounds', 'ounces'].includes(product.uom?.toLowerCase()) ? 0.25 : 1.00))
+      const initialQty = step
       
       const existing = this.items.find(item => item.product_id === product.id)
       if (existing) {
         if (existing.quantity < product.stock_quantity) {
-          const step = isContinuous ? 0.25 : 1.00
           existing.quantity = parseFloat(Math.min(existing.quantity + step, product.stock_quantity).toFixed(3))
         }
       } else {
@@ -63,7 +62,8 @@ export const useCartStore = defineStore('cart', {
           price: product.price,
           quantity: initialQty,
           uom: product.uom || 'pieces',
-          stock_available: product.stock_quantity
+          stock_available: product.stock_quantity,
+          min_sale_qty: step
         })
       }
       this.calculateDiscountAmount()
@@ -79,8 +79,7 @@ export const useCartStore = defineStore('cart', {
       const item = this.items.find(item => item.product_id === productId)
       if (item) {
         const parsedQty = parseFloat(qty)
-        const isContinuous = ['kilograms', 'liters', 'litters', 'pounds', 'ounces'].includes(item.uom?.toLowerCase())
-        const minQty = isContinuous ? 0.25 : 1.00
+        const minQty = parseFloat(item.min_sale_qty || (['kilograms', 'liters', 'litters', 'pounds', 'ounces'].includes(item.uom?.toLowerCase()) ? 0.25 : 1.00))
         
         if (isNaN(parsedQty) || parsedQty < minQty) {
           this.removeFromCart(productId)

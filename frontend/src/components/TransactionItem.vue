@@ -26,23 +26,12 @@
       <div class="item-pricing">
         <span class="item-total-price">${{ totalPriceWithTax.toFixed(2) }}</span>
         <span class="item-total-price-tax">Excl. tax: ${{ Number(totalPrice).toFixed(2) }}</span>
-        <span class="item-unit-price">${{ unitPriceWithTax.toFixed(2) }} (Excl. tax: ${{ Number(price).toFixed(2) }}) / {{ displayUom }}{{ measureLabelSuffix }}</span>
+        <span class="item-unit-price">${{ unitPriceWithTax.toFixed(2) }} (Excl. tax: ${{ Number(price).toFixed(2) }}) / {{ displayUom }}</span>
       </div>
       
       <button class="remove-btn" @click="$emit('remove')">
         <Trash2 class="remove-icon" />
       </button>
-    </div>
-
-    <!-- Quick select buttons for continuous items -->
-    <div class="quick-amounts-bar" v-if="isContinuous">
-      <span class="quick-label">Quick Qty:</span>
-      <div class="quick-btns-row">
-        <button class="amount-btn" @click="$emit('set-qty', 0.25)">1/4 ({{ uomLabel250 }})</button>
-        <button class="amount-btn" @click="$emit('set-qty', 0.50)">1/2 ({{ uomLabel500 }})</button>
-        <button class="amount-btn" @click="$emit('set-qty', 0.75)">3/4 ({{ uomLabel750 }})</button>
-        <button class="amount-btn" @click="$emit('set-qty', 1.00)">1.0 ({{ displayUom }})</button>
-      </div>
     </div>
   </div>
 </template>
@@ -74,7 +63,7 @@ const props = defineProps({
   }
 })
 
-defineEmits(['increase', 'decrease', 'remove', 'set-qty'])
+defineEmits(['increase', 'decrease', 'remove'])
 
 const formattedQty = computed(() => {
   const q = parseFloat(props.quantity)
@@ -105,47 +94,6 @@ const displayUom = computed(() => {
   }
   return map[props.uom?.toLowerCase()] || props.uom
 })
-
-const isContinuous = computed(() => {
-  const u = props.uom?.toLowerCase()
-  return ['kilograms', 'liters', 'litters', 'pounds', 'ounces'].includes(u)
-})
-
-const measureLabelSuffix = computed(() => {
-  const uomLower = props.uom?.toLowerCase()
-  if (uomLower === 'kilograms') return ' (per 250g)'
-  if (uomLower === 'liters' || uomLower === 'litters') return ' (per 250ml)'
-  if (uomLower === 'pounds') return ' (per 1/4 lb)'
-  if (uomLower === 'ounces') return ' (per 1/4 oz)'
-  return ''
-})
-
-const uomLabel250 = computed(() => {
-  const u = props.uom?.toLowerCase()
-  if (u === 'kilograms') return '250g'
-  if (u === 'liters' || u === 'litters') return '250ml'
-  if (u === 'pounds') return '1/4 lb'
-  if (u === 'ounces') return '1/4 oz'
-  return '0.25'
-})
-
-const uomLabel500 = computed(() => {
-  const u = props.uom?.toLowerCase()
-  if (u === 'kilograms') return '500g'
-  if (u === 'liters' || u === 'litters') return '500ml'
-  if (u === 'pounds') return '1/2 lb'
-  if (u === 'ounces') return '1/2 oz'
-  return '0.50'
-})
-
-const uomLabel750 = computed(() => {
-  const u = props.uom?.toLowerCase()
-  if (u === 'kilograms') return '750g'
-  if (u === 'liters' || u === 'litters') return '750ml'
-  if (u === 'pounds') return '3/4 lb'
-  if (u === 'ounces') return '3/4 oz'
-  return '0.75'
-})
 </script>
 
 <style scoped>
@@ -162,11 +110,6 @@ const uomLabel750 = computed(() => {
   align-items: center;
   gap: 12px;
   padding: 12px 16px;
-}
-
-/* Add dashed border between items if the quick amounts bar is active */
-.transaction-item-wrapper:has(.quick-amounts-bar) .transaction-item {
-  border-bottom: 1px dashed var(--border-color);
 }
 
 .product-thumb {
@@ -322,47 +265,5 @@ const uomLabel750 = computed(() => {
 .remove-icon {
   width: 16px;
   height: 16px;
-}
-
-/* Quick selection amounts bar styles */
-.quick-amounts-bar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 8px 16px;
-  background-color: #f9fafb;
-}
-
-.quick-label {
-  font-size: 0.72rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  color: var(--text-muted);
-  letter-spacing: 0.5px;
-  white-space: nowrap;
-}
-
-.quick-btns-row {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-.amount-btn {
-  background-color: var(--bg-card);
-  border: 1px solid var(--border-color);
-  padding: 4px 10px;
-  font-size: 0.72rem;
-  font-weight: 600;
-  border-radius: 4px;
-  color: var(--text-secondary);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-}
-
-.amount-btn:hover {
-  background-color: var(--accent-lime);
-  color: var(--bg-app);
-  border-color: var(--accent-lime);
 }
 </style>
