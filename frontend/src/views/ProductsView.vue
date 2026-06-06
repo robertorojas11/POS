@@ -35,33 +35,38 @@
         <div 
           v-for="prod in filteredProducts" 
           :key="prod.id"
-          class="catalog-item-card premium-card"
+          class="product-card"
           @click="openDetailsDrawer(prod)"
         >
-          <div class="item-img-container">
-            <div class="img-initials-box">
-              <span>{{ prod.name.charAt(0) }}</span>
+          <div class="product-image-container">
+            <div class="product-placeholder">
+              <span class="product-initials">{{ getInitials(prod.name) }}</span>
             </div>
-            <div class="stock-indicator-badge" :class="getStockClass(prod)">
+            <div class="stock-badge" :class="getStockClass(prod)">
               {{ formatDecimal(prod.stock_quantity) }} {{ shortUom(prod.uom) }}
             </div>
           </div>
           
-          <div class="item-details-body">
-            <h4 class="item-card-name">{{ prod.name }}</h4>
-            <span class="item-card-sku">{{ prod.sku }}</span>
-            <span class="item-card-category">{{ prod.category_name || 'Unassigned' }}</span>
-          </div>
-
-          <div class="item-details-footer">
-            <div class="price-stack">
-              <span class="price-val">${{ Number(prod.price).toFixed(2) }}</span>
-              <span class="cost-price-val">Cost: ${{ Number(prod.cost_price).toFixed(2) }}</span>
+          <div class="product-info">
+            <div class="product-meta">
+              <h4 class="product-name" :title="prod.name">{{ prod.name }}</h4>
+              <span class="product-sku">{{ prod.sku }}</span>
+              <span class="product-category">{{ prod.category_name || 'Unassigned' }}</span>
             </div>
             
-            <div class="item-card-actions" @click.stop v-if="isAdminOrManager">
-              <button class="action-circle-btn edit" @click="openEditModal(prod)" title="Edit Product">
-                <Edit2 class="btn-icon" />
+            <div class="product-action-row">
+              <div class="price-group">
+                <span class="product-price">${{ Number(prod.price).toFixed(2) }}</span>
+                <span class="product-price-tax">Cost: ${{ Number(prod.cost_price).toFixed(2) }}</span>
+              </div>
+              
+              <button 
+                class="add-btn edit-btn" 
+                @click.stop="openEditModal(prod)" 
+                v-if="isAdminOrManager"
+                title="Edit Product"
+              >
+                <Edit2 class="add-icon" />
               </button>
             </div>
           </div>
@@ -201,17 +206,41 @@
 
             <div class="form-group">
               <label class="pos-label">Initial Stock Level</label>
-              <input type="number" v-model="formData.stock_quantity" class="pos-input" min="0" step="any" required />
+              <input 
+                type="number" 
+                v-model.number="formData.stock_quantity" 
+                class="pos-input" 
+                min="0" 
+                step="any" 
+                @keypress="handleStockKeyPress"
+                required 
+              />
             </div>
 
             <div class="form-group">
               <label class="pos-label">Min Warning Level</label>
-              <input type="number" v-model="formData.min_stock_level" class="pos-input" min="0" step="any" required />
+              <input 
+                type="number" 
+                v-model.number="formData.min_stock_level" 
+                class="pos-input" 
+                min="0" 
+                step="any" 
+                @keypress="handleStockKeyPress"
+                required 
+              />
             </div>
 
             <div class="form-group">
               <label class="pos-label">Min Sale Quantity (Step)</label>
-              <input type="number" v-model="formData.min_sale_qty" class="pos-input" min="0.001" step="any" required />
+              <input 
+                type="number" 
+                v-model.number="formData.min_sale_qty" 
+                class="pos-input" 
+                min="0.001" 
+                step="any" 
+                @keypress="handleStockKeyPress"
+                required 
+              />
             </div>
 
             <div class="form-group">
@@ -291,6 +320,10 @@ const formData = ref({
   category_id: null,
   is_active: true
 })
+
+const getInitials = (name) => {
+  return name?.split(' ').slice(0, 2).map(n => n[0]).join('').toUpperCase() || 'P'
+}
 
 const formatDecimal = (val) => {
   const v = parseFloat(val)
@@ -378,7 +411,64 @@ const openEditModal = (prod) => {
   showModal.value = true
 }
 
+const handleStockKeyPress = (event) => {
+  const charCode = event.which ? event.which : event.keyCode
+  const charStr = String.fromCharCode(charCode)
+  
+  // Block negative sign (-), plus sign (+), and exponent (e, E)
+  if (['-', '+', 'e', 'E'].includes(charStr)) {
+    event.preventDefault()
+    return
+  }
+  
+  // Block decimal separator if pieces UOM is selected
+  const isPieces = formData.value.uom?.toLowerCase() === 'pieces'
+  if (isPieces && ['.', ','].includes(charStr)) {
+    event.preventDefault()
+  }
+}
+
 const saveProduct = async () => {
+  // Validate stock_quantity, min_stock_level, min_sale_qty
+  let stock = parseFloat(formData.value.stock_quantity)
+  let minStock = parseFloat(formData.value.min_stock_level)
+  let minSale = parseFloat(formData.value.min_sale_qty)
+  
+  if (isNaN(stock) || stock < 0) {
+    alert('Stock quantity must be a non-negative number')
+    return
+  }
+  if (isNaN(minStock) || minStock < 0) {
+    alert('Min warning level must be a non-negative number')
+    return
+  }
+  if (isNaN(minSale) || minSale <= 0) {
+    alert('Min sale quantity must be a positive number')
+    return
+  }
+  
+  // If product UOM is pieces, we don't accept fractional numbers!
+  const isPieces = formData.value.uom?.toLowerCase() === 'pieces'
+  if (isPieces) {
+    if (stock % 1 !== 0) {
+      alert('Stock quantity must be an integer for pieces UOM')
+      return
+    }
+    if (minStock % 1 !== 0) {
+      alert('Min warning level must be an integer for pieces UOM')
+      return
+    }
+    if (minSale % 1 !== 0) {
+      alert('Min sale quantity must be an integer for pieces UOM')
+      return
+    }
+  }
+  
+  // Ensure formatted values are set in formData
+  formData.value.stock_quantity = stock
+  formData.value.min_stock_level = minStock
+  formData.value.min_sale_qty = minSale
+
   let result = null
   if (isEditMode.value) {
     result = await productsStore.updateProduct(editProductId.value, formData.value)
@@ -459,41 +549,55 @@ const shortUom = (uom) => {
 /* Catalog grids */
 .catalog-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 20px;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 16px;
 }
 
-.catalog-item-card {
+.product-card {
+  background-color: var(--bg-card);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-color);
+  padding: 16px;
   cursor: pointer;
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 16px !important;
+  box-shadow: var(--shadow-sm);
+  transition: transform var(--transition-normal), box-shadow var(--transition-normal), border-color var(--transition-fast);
 }
 
-.catalog-item-card:hover {
+.product-card:hover {
   transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
   border-color: var(--text-muted);
 }
 
-.item-img-container {
-  height: 110px;
+.product-image-container {
+  height: 120px;
   background-color: #f9fafb;
-  border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
   position: relative;
+  overflow: hidden;
+  border: 1px solid #f3f4f6;
+}
+
+.product-placeholder {
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
-.img-initials-box {
-  font-size: 2.2rem;
+.product-initials {
+  font-size: 1.85rem;
   font-weight: 700;
   color: var(--text-muted);
+  letter-spacing: 1px;
 }
 
-.stock-indicator-badge {
+.stock-badge {
   position: absolute;
   top: 8px;
   right: 8px;
@@ -503,100 +607,102 @@ const shortUom = (uom) => {
   border-radius: 12px;
 }
 
-.stock-indicator-badge.in-stock {
+.stock-badge.in-stock {
   background-color: rgba(16, 185, 129, 0.1);
   color: var(--accent-success);
 }
 
-.stock-indicator-badge.low-stock {
+.stock-badge.low-stock {
   background-color: rgba(245, 158, 11, 0.1);
   color: var(--accent-warning);
 }
 
-.stock-indicator-badge.out-of-stock {
+.stock-badge.out-of-stock {
   background-color: rgba(255, 94, 94, 0.1);
   color: var(--accent-danger);
 }
 
-.item-details-body {
+.product-info {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 12px;
+  flex-grow: 1;
 }
 
-.item-card-name {
+.product-meta {
+  display: flex;
+  flex-direction: column;
+}
+
+.product-name {
   font-size: 0.95rem;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.item-card-sku {
-  font-size: 0.72rem;
-  font-family: monospace;
+.product-sku {
+  font-size: 0.75rem;
   color: var(--text-muted);
+  margin-top: 1px;
 }
 
-.item-card-category {
-  font-size: 0.75rem;
+.product-category {
+  font-size: 0.72rem;
   color: var(--text-secondary);
   margin-top: 4px;
 }
 
-.item-details-footer {
+.product-action-row {
   display: flex;
   justify-content: space-between;
-  align-items: flex-end;
-  border-top: 1px solid var(--border-color);
-  padding-top: 12px;
+  align-items: center;
   margin-top: auto;
 }
 
-.price-stack {
-  display: flex;
-  flex-direction: column;
-}
-
-.price-val {
+.product-price {
   font-size: 1.15rem;
-  font-weight: 800;
+  font-weight: 700;
   color: var(--text-primary);
 }
 
-.cost-price-val {
-  font-size: 0.7rem;
-  color: var(--text-muted);
-}
-
-.item-card-actions {
-  display: flex;
-  gap: 8px;
-}
-
-.action-circle-btn {
+.add-btn {
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  border: 1px solid var(--border-color);
-  background-color: #ffffff;
+  background-color: var(--accent-lime);
+  color: var(--accent-lime-text);
+  border: none;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  color: var(--text-secondary);
   transition: all var(--transition-fast);
 }
 
-.action-circle-btn:hover {
-  background-color: #f3f4f6;
-  color: var(--text-primary);
+.add-btn:hover {
+  background-color: var(--accent-lime-hover);
+  transform: scale(1.05);
 }
 
-.btn-icon {
-  width: 14px;
-  height: 14px;
+.add-icon {
+  width: 16px;
+  height: 16px;
+  stroke-width: 3px;
+}
+
+.price-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.product-price-tax {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  font-weight: 600;
+  margin-top: 1px;
 }
 
 .empty-catalog-state {

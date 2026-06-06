@@ -19,15 +19,17 @@ export const useCartStore = defineStore('cart', {
   }),
   getters: {
     subtotal: (state) => {
-      return state.items.reduce((sum, item) => sum + (item.price * item.quantity), 0)
+      const val = state.items.reduce((sum, item) => sum + (item.price * item.quantity), 0)
+      return parseFloat(val.toFixed(2))
     },
     taxAmount: (state) => {
       const taxable = Math.max(0, state.subtotal - state.discount)
-      return taxable * state.taxRate
+      return parseFloat((taxable * state.taxRate).toFixed(2))
     },
     total: (state) => {
       const taxable = Math.max(0, state.subtotal - state.discount)
-      return taxable + (taxable * state.taxRate)
+      const val = taxable + (taxable * state.taxRate)
+      return parseFloat(val.toFixed(2))
     },
     itemsCount: (state) => {
       return state.items.reduce((sum, item) => sum + item.quantity, 0)
@@ -78,12 +80,18 @@ export const useCartStore = defineStore('cart', {
     updateQuantity(productId, qty) {
       const item = this.items.find(item => item.product_id === productId)
       if (item) {
-        const parsedQty = parseFloat(qty)
+        let parsedQty = parseFloat(qty)
         const minQty = parseFloat(item.min_sale_qty || (['kilograms', 'liters', 'litters', 'pounds', 'ounces'].includes(item.uom?.toLowerCase()) ? 0.25 : 1.00))
         
         if (isNaN(parsedQty) || parsedQty < minQty) {
           this.removeFromCart(productId)
         } else {
+          if (parsedQty < 0) {
+            parsedQty = 0
+          }
+          if (minQty % 1 === 0) {
+            parsedQty = Math.floor(parsedQty)
+          }
           item.quantity = parseFloat(Math.min(parsedQty, item.stock_available).toFixed(3))
         }
       }
@@ -132,7 +140,7 @@ export const useCartStore = defineStore('cart', {
         console.error('Failed to load offline sales queue from IndexedDB', err)
       }
     },
-    async checkout(paymentMethod) {
+    async checkout(paymentMethod, paymentDetails = null) {
       this.loading = true
       this.error = null
       
@@ -142,6 +150,7 @@ export const useCartStore = defineStore('cart', {
           quantity: item.quantity
         })),
         payment_method: paymentMethod,
+        payment_details: paymentDetails,
         customer_id: this.selectedCustomer?.id || null,
         discount: this.discount,
         tax_rate: this.taxRate

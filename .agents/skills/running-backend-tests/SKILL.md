@@ -28,27 +28,38 @@ Do not change directories (`cd`). Set the command's working directory (`Cwd`) to
 
 * **Windows PowerShell**:
   ```powershell
-  . venv/Scripts/Activate.ps1
-  $env:FLASK_CONFIG="testing"
+  . venv/Scripts/Activate.ps1; $env:FLASK_CONFIG="testing"; python -m unittest discover -s tests -p "test_*.py" -v
   ```
 * **Windows CMD**:
   ```cmd
-  call venv\Scripts\activate.bat
-  set FLASK_CONFIG=testing
+  call venv\Scripts\activate.bat && set FLASK_CONFIG=testing && python -m unittest discover -s tests -p "test_*.py" -v
   ```
 * **Linux/macOS / Bash**:
   ```bash
-  source venv/bin/activate
-  export FLASK_CONFIG="testing"
+  source venv/bin/activate && export FLASK_CONFIG="testing" && python -m unittest discover -s tests -p "test_*.py" -v
   ```
 
-### 3. Run the Tests
-With the virtual environment activated and `FLASK_CONFIG` set, execute the Python unittest command inside the `backend/` directory:
+### 3. Running a Single Test File
+To run tests for a specific domain:
 ```bash
-python -m unittest discover -s tests -p "test_*.py"
+python -m unittest tests.test_auth -v
+python -m unittest tests.test_shift -v
 ```
 
-### 4. Error Handling
+### 4. Testing Configuration
+Tests use `create_app('testing')` which loads `TestingConfig` from `backend/app/config.py`:
+- **Database**: `postgresql://postgres:postgres@localhost:5432/pos_test_db`
+- **Redis**: `redis://localhost:6379/1` (separate DB index from development)
+
+Ensure PostgreSQL and Redis are running before executing tests.
+
+### 5. Current Test Files
+| File | Domain | Key Tests |
+|------|--------|-----------|
+| `tests/test_auth.py` | Authentication | Registration, login, employee CRUD, audit trail |
+| `tests/test_shift.py` | Shifts & Sales | Shift lifecycle, checkout, discounts, UOM, SSE, terminal cache |
+
+### 6. Error Handling
 - If the unittest discovery fails or if you encounter import issues, check the dependencies by running `pip list` within the activated environment.
 - For help with unittest command-line arguments, run:
   ```bash

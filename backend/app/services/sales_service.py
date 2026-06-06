@@ -15,7 +15,7 @@ class SalesService:
         return f"INV-{timestamp}-{unique_suffix}"
 
     @staticmethod
-    def process_checkout(cashier_id, cart_items, payment_method, customer_id=None, discount=0.00, tax_rate=0.0825):
+    def process_checkout(cashier_id, cart_items, payment_method, customer_id=None, discount=0.00, tax_rate=0.0825, payment_details=None):
         """
         Executes the atomic checkout operation:
         1. Validates stock levels.
@@ -98,7 +98,23 @@ class SalesService:
                 if customer:
                     points_earned = int(total_val)
                     customer.loyalty_points += points_earned
+            # Calculate payment method splits
+            cash_amount_val = 0.00
+            card_amount_val = 0.00
+            mobile_amount_val = 0.00
             
+            if payment_method == 'split':
+                if payment_details:
+                    cash_amount_val = float(payment_details.get('cash', 0.00))
+                    card_amount_val = float(payment_details.get('card', 0.00))
+                    mobile_amount_val = float(payment_details.get('mobile_pay', 0.00))
+            elif payment_method == 'cash':
+                cash_amount_val = total_val
+            elif payment_method == 'card':
+                card_amount_val = total_val
+            elif payment_method == 'mobile_pay':
+                mobile_amount_val = total_val
+
             # Create Sale object
             sale = Sale(
                 invoice_number=invoice_num,
@@ -107,6 +123,9 @@ class SalesService:
                 tax=tax_val,
                 total=total_val,
                 payment_method=payment_method,
+                cash_amount=cash_amount_val,
+                card_amount=card_amount_val,
+                mobile_amount=mobile_amount_val,
                 cashier_id=cashier_id,
                 customer_id=customer_id,
                 shift_id=active_shift.id

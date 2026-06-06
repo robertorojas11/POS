@@ -18,6 +18,7 @@ def checkout():
     
     cart_items = data.get('items', [])
     payment_method = data.get('payment_method', 'cash')
+    payment_details = data.get('payment_details')
     customer_id = data.get('customer_id')
     discount = data.get('discount', 0.00)
     tax_rate = data.get('tax_rate', 0.0825)
@@ -32,7 +33,8 @@ def checkout():
             payment_method=payment_method,
             customer_id=customer_id,
             discount=discount,
-            tax_rate=tax_rate
+            tax_rate=tax_rate,
+            payment_details=payment_details
         )
         return jsonify({
             "message": "Checkout completed successfully",
@@ -231,9 +233,8 @@ def close_shift():
         return jsonify({"error": "No active open shift session found to close"}), 400
         
     # Calculate cash sales during this shift
-    cash_sales_query = db.session.query(func.sum(Sale.total)).filter(
-        Sale.shift_id == active_shift.id,
-        Sale.payment_method == 'cash'
+    cash_sales_query = db.session.query(func.sum(Sale.cash_amount)).filter(
+        Sale.shift_id == active_shift.id
     ).scalar()
     total_cash_sales = float(cash_sales_query) if cash_sales_query else 0.00
     
@@ -242,15 +243,13 @@ def close_shift():
     variance = actual_cash_val - expected_cash
     
     # Calculate sales by other payment methods
-    card_sales_query = db.session.query(func.sum(Sale.total)).filter(
-        Sale.shift_id == active_shift.id,
-        Sale.payment_method == 'card'
+    card_sales_query = db.session.query(func.sum(Sale.card_amount)).filter(
+        Sale.shift_id == active_shift.id
     ).scalar()
     total_card_sales = float(card_sales_query) if card_sales_query else 0.00
     
-    mobile_sales_query = db.session.query(func.sum(Sale.total)).filter(
-        Sale.shift_id == active_shift.id,
-        Sale.payment_method == 'mobile_pay'
+    mobile_sales_query = db.session.query(func.sum(Sale.mobile_amount)).filter(
+        Sale.shift_id == active_shift.id
     ).scalar()
     total_mobile_sales = float(mobile_sales_query) if mobile_sales_query else 0.00
     
@@ -293,9 +292,8 @@ def active_shift():
         return jsonify({"active": False, "shift": None}), 200
         
     # Calculate current expected cash on the fly
-    cash_sales_query = db.session.query(func.sum(Sale.total)).filter(
-        Sale.shift_id == shift.id,
-        Sale.payment_method == 'cash'
+    cash_sales_query = db.session.query(func.sum(Sale.cash_amount)).filter(
+        Sale.shift_id == shift.id
     ).scalar()
     total_cash_sales = float(cash_sales_query) if cash_sales_query else 0.00
     
@@ -324,9 +322,8 @@ def active_shifts_all():
     
     results = []
     for s in active_shifts:
-        cash_sales_query = db.session.query(func.sum(Sale.total)).filter(
-            Sale.shift_id == s.id,
-            Sale.payment_method == 'cash'
+        cash_sales_query = db.session.query(func.sum(Sale.cash_amount)).filter(
+            Sale.shift_id == s.id
         ).scalar()
         total_cash_sales = float(cash_sales_query) if cash_sales_query else 0.00
         

@@ -245,12 +245,26 @@
           </div>
         </div>
 
+        <!-- Card Terminal Instruction -->
+        <div class="non-cash-instruction premium-card" v-if="paymentMethod === 'card'">
+          <CreditCard class="instruction-icon" />
+          <p>Please direct the customer to the card terminal for payment. Confirm below once the transaction completes successfully.</p>
+        </div>
+
+        <!-- Mobile Pay Instruction -->
+        <div class="non-cash-instruction premium-card" v-if="paymentMethod === 'mobile_pay'">
+          <Smartphone class="instruction-icon" />
+          <p>Please verify the mobile payment on the merchant app. Confirm below once the transfer is successful.</p>
+        </div>
+
         <!-- Cash Calculator -->
         <div class="cash-calc-pane" v-if="paymentMethod === 'cash'">
           <label class="calc-label">Cash Received From Customer</label>
           <input 
             type="number" 
             v-model="cashReceived" 
+            @input="handleCashReceivedInput"
+            @keypress="handleCashKeyPress"
             class="pos-input cash-received-input"
             step="0.01"
             min="0"
@@ -263,11 +277,75 @@
           </div>
         </div>
 
+        <!-- Split Payment Panel -->
+        <div class="split-pay-pane" v-if="paymentMethod === 'split'">
+          <h4 class="pos-label">Manage Split Payments</h4>
+          
+          <div class="split-payments-list" v-if="splitPayments.length > 0">
+            <div 
+              v-for="(p, idx) in splitPayments" 
+              :key="idx" 
+              class="split-payment-row"
+            >
+              <span class="split-method-tag">{{ getDisplayPaymentMethodName(p.method) }}</span>
+              <span class="split-amount-val">${{ p.amount.toFixed(2) }}</span>
+              <button class="remove-split-btn" @click="removeSplitPayment(idx)">&times;</button>
+            </div>
+          </div>
+          
+          <div class="split-balance-summary">
+            <div class="balance-line">
+              <span>Paid:</span>
+              <strong>${{ (cartStore.total - splitRemainingBalance).toFixed(2) }}</strong>
+            </div>
+            <div class="balance-line remaining">
+              <span>Remaining:</span>
+              <strong :class="{ 'text-success': splitRemainingBalance === 0 }">
+                ${{ splitRemainingBalance.toFixed(2) }}
+              </strong>
+            </div>
+          </div>
+          
+          <div class="split-payment-controls" v-if="splitRemainingBalance > 0">
+            <select v-model="currentSplitMethod" class="pos-input split-method-select">
+              <option value="cash">Cash</option>
+              <option value="card">Card</option>
+              <option value="mobile_pay">Mobile Pay</option>
+            </select>
+            
+            <div class="split-amount-input-group">
+              <input 
+                type="number" 
+                v-model="currentSplitAmount" 
+                class="pos-input split-amount-input"
+                min="0.01"
+                :max="splitRemainingBalance"
+                step="0.01"
+                @keypress="handleCashKeyPress"
+                @input="handleSplitAmountInput"
+              />
+            </div>
+            
+            <button 
+              type="button" 
+              class="pos-btn pos-btn-accent add-split-btn" 
+              @click="addSplitPayment"
+              :disabled="currentSplitAmount <= 0"
+            >
+              Add
+            </button>
+          </div>
+          <div class="split-instructions premium-card" v-else>
+            <Check class="instruction-icon text-success" />
+            <p>Paid in Full. Confirm below to complete the transaction.</p>
+          </div>
+        </div>
+
         <div class="finalize-actions">
           <button class="pos-btn pos-btn-secondary" @click="showCheckoutModal = false">Cancel</button>
           <button 
             class="pos-btn pos-btn-accent finalize-submit-btn" 
-            :disabled="paymentMethod === 'cash' && cashChange < 0"
+            :disabled="(paymentMethod === 'cash' && cashChange < 0) || (paymentMethod === 'split' && splitRemainingBalance > 0)"
             @click="submitPayment"
           >
             Confirm & Print
@@ -376,6 +454,7 @@
                   class="modal-qty-input" 
                   :value="modalQty" 
                   @input="handleModalQtyInput"
+                  @keypress="handleQtyKeyPress"
                   min="0"
                   :max="selectedProduct.stock_quantity"
                   step="any"
@@ -424,7 +503,7 @@ import ProductCard from '@/components/ProductCard.vue'
 import TransactionItem from '@/components/TransactionItem.vue'
 import PaymentSelector from '@/components/PaymentSelector.vue'
 import axios from 'axios'
-import { Search, Barcode, Trash2, UserPlus, UserCheck, X, ShoppingCart, Tag, Package, Plus, Minus } from 'lucide-vue-next'
+import { Search, Barcode, Trash2, UserPlus, UserCheck, X, ShoppingCart, Tag, Package, Plus, Minus, CreditCard, Smartphone, Check } from 'lucide-vue-next'
 
 const productsStore = useProductsStore()
 const cartStore = useCartStore()
@@ -484,14 +563,51 @@ const decreaseModalQty = () => {
   modalQty.value = Math.max(0, newQty)
 }
 
+const handleQtyKeyPress = (event) => {
+  if (!selectedProduct.value) return
+  const charCode = event.which ? event.which : event.keyCode
+  const charStr = String.fromCharCode(charCode)
+  
+  // Block negative sign (-), plus sign (+), and exponent (e, E)
+  if (['-', '+', 'e', 'E'].includes(charStr)) {
+    event.preventDefault()
+    return
+  }
+  
+  // Check if fractional numbers are allowed for this product
+  const step = getProductStep(selectedProduct.value)
+  const acceptsFractional = (step % 1 !== 0)
+  
+  // Block decimal separators if fractional numbers are not allowed
+  if (!acceptsFractional && ['.', ','].includes(charStr)) {
+    event.preventDefault()
+  }
+}
+
 const handleModalQtyInput = (event) => {
   if (!selectedProduct.value) return
-  let val = parseFloat(event.target.value)
+  let rawVal = event.target.value
+  
+  // Strip out invalid characters
+  rawVal = rawVal.replace(/[^\d.,]/g, '')
+  
+  let val = parseFloat(rawVal)
   if (isNaN(val) || val < 0) {
     val = 0
   }
+  
+  const step = getProductStep(selectedProduct.value)
+  const acceptsFractional = (step % 1 !== 0)
+  
+  if (!acceptsFractional) {
+    val = Math.floor(val)
+  } else {
+    val = parseFloat(val.toFixed(3))
+  }
+  
   const maxStock = parseFloat(selectedProduct.value.stock_quantity)
   modalQty.value = Math.min(val, maxStock)
+  event.target.value = modalQty.value
 }
 
 const applyModalQty = () => {
@@ -597,20 +713,115 @@ const handleRemovePromo = () => {
   promoError.value = ''
 }
 
+const splitPayments = ref([])
+const currentSplitMethod = ref('cash')
+const currentSplitAmount = ref(0)
+
+const splitRemainingBalance = computed(() => {
+  const paid = splitPayments.value.reduce((sum, p) => sum + p.amount, 0)
+  return parseFloat((cartStore.total - paid).toFixed(2))
+})
+
+const getDisplayPaymentMethodName = (method) => {
+  const map = {
+    'cash': 'Cash',
+    'card': 'Card',
+    'mobile_pay': 'Mobile Pay',
+    'split': 'Split Pay'
+  }
+  return map[method] || method
+}
+
+const addSplitPayment = () => {
+  const amt = parseFloat(parseFloat(currentSplitAmount.value).toFixed(2))
+  if (isNaN(amt) || amt <= 0) {
+    alert('Please enter a valid positive amount')
+    return
+  }
+  if (amt > splitRemainingBalance.value) {
+    alert('Payment amount exceeds remaining balance')
+    return
+  }
+  
+  const existing = splitPayments.value.find(p => p.method === currentSplitMethod.value)
+  if (existing) {
+    existing.amount = parseFloat((existing.amount + amt).toFixed(2))
+  } else {
+    splitPayments.value.push({
+      method: currentSplitMethod.value,
+      amount: amt
+    })
+  }
+  
+  currentSplitAmount.value = splitRemainingBalance.value
+}
+
+const removeSplitPayment = (index) => {
+  splitPayments.value.splice(index, 1)
+  currentSplitAmount.value = splitRemainingBalance.value
+}
+
+const handleSplitAmountInput = (event) => {
+  let val = event.target.value
+  if (val.includes('.')) {
+    const parts = val.split('.')
+    if (parts[1].length > 2) {
+      val = `${parts[0]}.${parts[1].slice(0, 2)}`
+      currentSplitAmount.value = parseFloat(val)
+      event.target.value = val
+    }
+  }
+}
+
 // Checkout Modal Actions
 const openCheckoutModal = () => {
-  paymentMethod.value = 'cash'
-  cashReceived.value = cartStore.total
+  if (!paymentMethod.value) {
+    paymentMethod.value = 'cash'
+  }
+  splitPayments.value = []
+  currentSplitMethod.value = 'cash'
+  currentSplitAmount.value = parseFloat(cartStore.total.toFixed(2))
+  cashReceived.value = parseFloat(cartStore.total.toFixed(2))
   showCheckoutModal.value = true
 }
 
 const cashChange = computed(() => {
   if (paymentMethod.value !== 'cash') return 0
-  return parseFloat(cashReceived.value || 0) - cartStore.total
+  const diff = parseFloat(cashReceived.value || 0) - cartStore.total
+  return parseFloat(diff.toFixed(2))
 })
 
+const handleCashKeyPress = (event) => {
+  const charCode = event.which ? event.which : event.keyCode
+  const charStr = String.fromCharCode(charCode)
+  if (['-', '+', 'e', 'E'].includes(charStr)) {
+    event.preventDefault()
+  }
+}
+
+const handleCashReceivedInput = (event) => {
+  let val = event.target.value
+  if (val.includes('.')) {
+    const parts = val.split('.')
+    if (parts[1].length > 2) {
+      val = `${parts[0]}.${parts[1].slice(0, 2)}`
+      cashReceived.value = parseFloat(val)
+      event.target.value = val
+    }
+  }
+}
+
 const submitPayment = async () => {
-  const sale = await cartStore.checkout(paymentMethod.value)
+  let details = null
+  if (paymentMethod.value === 'split') {
+    details = {
+      cash: splitPayments.value.find(p => p.method === 'cash')?.amount || 0.00,
+      card: splitPayments.value.find(p => p.method === 'card')?.amount || 0.00,
+      mobile_pay: splitPayments.value.find(p => p.method === 'mobile_pay')?.amount || 0.00
+    }
+  }
+
+  const sale = await cartStore.checkout(paymentMethod.value, details)
   if (sale) {
     alert(`Checkout Completed! Invoice: ${sale.invoice_number}`)
     showCheckoutModal.value = false
@@ -620,7 +831,7 @@ const submitPayment = async () => {
     await productsStore.fetchProducts({}, true) // refresh stock levels
     filterProducts()
   } else {
-    alert('Checkout failed: ' + cartStore.error)
+    alert(cartStore.error || 'Checkout transaction failed')
   }
 }
 
@@ -1628,5 +1839,152 @@ onMounted(async () => {
   background-color: var(--accent-lime);
   color: var(--accent-lime-text);
   font-weight: 700;
+}
+
+/* Non-cash instructions */
+.non-cash-instruction {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px !important;
+  background-color: rgba(59, 130, 246, 0.08) !important;
+  border: 1px solid rgba(59, 130, 246, 0.2) !important;
+  border-radius: var(--radius-md);
+  margin: 16px 0;
+  color: var(--text-primary);
+}
+
+.instruction-icon {
+  width: 24px;
+  height: 24px;
+  color: #3b82f6;
+  flex-shrink: 0;
+}
+
+.non-cash-instruction p {
+  font-size: 0.85rem;
+  line-height: 1.4;
+  margin: 0;
+  font-weight: 500;
+}
+
+/* Split Payment UI */
+.split-pay-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin: 16px 0;
+}
+
+.split-payments-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 150px;
+  overflow-y: auto;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  background-color: #f9fafb;
+}
+
+.split-payment-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  background-color: #ffffff;
+  padding: 8px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+}
+
+.split-method-tag {
+  background-color: #f3f4f6;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.split-amount-val {
+  font-weight: 700;
+  margin-left: auto;
+  margin-right: 16px;
+}
+
+.remove-split-btn {
+  background: none;
+  border: none;
+  font-size: 1.2rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  line-height: 1;
+}
+
+.remove-split-btn:hover {
+  color: var(--accent-danger);
+}
+
+.split-balance-summary {
+  display: flex;
+  justify-content: space-between;
+  background-color: #f3f4f6;
+  padding: 12px 16px;
+  border-radius: var(--radius-md);
+  font-size: 0.88rem;
+}
+
+.balance-line {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.balance-line.remaining strong.text-success {
+  color: var(--accent-success) !important;
+}
+
+.split-payment-controls {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.split-method-select {
+  flex: 1;
+}
+
+.split-amount-input-group {
+  flex: 1;
+}
+
+.split-amount-input {
+  width: 100%;
+}
+
+.add-split-btn {
+  padding: 0 16px !important;
+  height: 40px;
+}
+
+.split-instructions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px !important;
+  background-color: rgba(16, 185, 129, 0.08) !important;
+  border: 1px solid rgba(16, 185, 129, 0.2) !important;
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+}
+
+.split-instructions p {
+  font-size: 0.85rem;
+  margin: 0;
+  font-weight: 600;
 }
 </style>

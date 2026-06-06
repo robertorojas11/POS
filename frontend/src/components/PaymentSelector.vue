@@ -14,10 +14,11 @@
 </template>
 
 <script setup>
-import { 
+  import { 
   Banknote, 
   CreditCard, 
-  Smartphone 
+  Smartphone,
+  Split
 } from 'lucide-vue-next'
 
 defineProps({
@@ -32,14 +33,15 @@ defineEmits(['update:modelValue'])
 const methods = [
   { id: 'cash', name: 'Cash', icon: Banknote },
   { id: 'card', name: 'Card', icon: CreditCard },
-  { id: 'mobile_pay', name: 'Mobile Pay', icon: Smartphone }
+  { id: 'mobile_pay', name: 'Mobile Pay', icon: Smartphone },
+  { id: 'split', name: 'Split Pay', icon: Split }
 ]
 </script>
 
 <style scoped>
 .payment-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 8px;
 }
 

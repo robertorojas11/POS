@@ -10,7 +10,10 @@ class Sale(db.Model):
     tax = db.Column(db.Numeric(10, 2), default=0.00, nullable=False)
     discount = db.Column(db.Numeric(10, 2), default=0.00, nullable=False)
     total = db.Column(db.Numeric(10, 2), nullable=False)
-    payment_method = db.Column(db.String(32), default='cash', nullable=False)  # cash, card, mobile_pay
+    payment_method = db.Column(db.String(32), default='cash', nullable=False)  # cash, card, mobile_pay, split
+    cash_amount = db.Column(db.Numeric(10, 2), default=0.00, nullable=False)
+    card_amount = db.Column(db.Numeric(10, 2), default=0.00, nullable=False)
+    mobile_amount = db.Column(db.Numeric(10, 2), default=0.00, nullable=False)
     cashier_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     customer_id = db.Column(db.Integer, db.ForeignKey('customers.id'), nullable=True)
     shift_id = db.Column(db.String(36), db.ForeignKey('shifts.id'), nullable=True)
@@ -39,6 +42,9 @@ class Sale(db.Model):
             'discount': float(self.discount),
             'total': float(self.total),
             'payment_method': self.payment_method,
+            'cash_amount': float(self.cash_amount),
+            'card_amount': float(self.card_amount),
+            'mobile_amount': float(self.mobile_amount),
             'cashier_id': self.cashier_id,
             'cashier_name': self.cashier.username if self.cashier else None,
             'customer_id': self.customer_id,
