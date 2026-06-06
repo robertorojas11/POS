@@ -112,7 +112,6 @@
         </button>
       </div>
 
-      <!-- Transaction Line Items -->
       <div class="cart-items-scroller">
         <div v-if="cartStore.items.length">
           <TransactionItem 
@@ -123,9 +122,10 @@
             :price="item.price"
             :quantity="item.quantity"
             :uom="item.uom"
-            @increase="cartStore.updateQuantity(item.product_id, item.quantity + (item.uom && item.uom !== 'pieces' ? 0.1 : 1))"
-            @decrease="cartStore.updateQuantity(item.product_id, item.quantity - (item.uom && item.uom !== 'pieces' ? 0.1 : 1))"
-                        @remove="cartStore.removeFromCart(item.product_id)"
+            @increase="cartStore.updateQuantity(item.product_id, item.quantity + (['kilograms', 'liters', 'litters', 'pounds', 'ounces'].includes(item.uom?.toLowerCase()) ? 0.25 : 1.00))"
+            @decrease="cartStore.updateQuantity(item.product_id, item.quantity - (['kilograms', 'liters', 'litters', 'pounds', 'ounces'].includes(item.uom?.toLowerCase()) ? 0.25 : 1.00))"
+            @set-qty="(qty) => cartStore.updateQuantity(item.product_id, qty)"
+            @remove="cartStore.removeFromCart(item.product_id)"
           />
         </div>
         

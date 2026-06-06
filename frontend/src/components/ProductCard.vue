@@ -5,7 +5,7 @@
         <span class="product-initials">{{ initials }}</span>
       </div>
       <div class="stock-badge" :class="stockClass">
-        {{ formattedStock }} {{ uom }}
+        {{ formattedStock }} {{ displayUom }}
       </div>
     </div>
     <div class="product-info">
@@ -73,6 +73,19 @@ const stockClass = computed(() => {
 
 const priceWithTax = computed(() => {
   return parseFloat(props.price) * 1.0825
+})
+
+const displayUom = computed(() => {
+  const map = {
+    'pieces': 'pz',
+    'kilograms': 'kg',
+    'liters': 'l',
+    'litters': 'l',
+    'pounds': 'lb',
+    'ounces': 'oz',
+    'meters': 'm'
+  }
+  return map[props.uom?.toLowerCase()] || props.uom
 })
 </script>
 

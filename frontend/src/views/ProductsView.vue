@@ -43,7 +43,7 @@
               <span>{{ prod.name.charAt(0) }}</span>
             </div>
             <div class="stock-indicator-badge" :class="getStockClass(prod)">
-              {{ formatDecimal(prod.stock_quantity) }} {{ prod.uom }}
+              {{ formatDecimal(prod.stock_quantity) }} {{ shortUom(prod.uom) }}
             </div>
           </div>
           
@@ -112,7 +112,7 @@
             </div>
             <div class="info-row">
               <span class="info-label">Selling Unit</span>
-              <span class="info-val uom-val">{{ selectedProductDetails.uom }}</span>
+              <span class="info-val uom-val">{{ shortUom(selectedProductDetails.uom) }}</span>
             </div>
           </div>
 
@@ -208,11 +208,11 @@
             <div class="form-group">
               <label class="pos-label">Unit of Measurement (UOM)</label>
               <select v-model="formData.uom" class="pos-input">
-                <option value="pieces">Pieces (EA)</option>
-                <option value="kilograms">Kilograms (KG)</option>
-                <option value="pounds">Pounds (LB)</option>
-                <option value="liters">Liters (L)</option>
-                <option value="meters">Meters (M)</option>
+                <option value="pieces">pieces - pz</option>
+                <option value="kilograms">kilograms - kg</option>
+                <option value="pounds">pounds - lb</option>
+                <option value="liters">liters - l</option>
+                <option value="meters">meters - m</option>
               </select>
             </div>
 
@@ -390,6 +390,19 @@ onMounted(async () => {
   ])
   loading.value = false
 })
+
+const shortUom = (uom) => {
+  const map = {
+    'pieces': 'pz',
+    'kilograms': 'kg',
+    'liters': 'l',
+    'litters': 'l',
+    'pounds': 'lb',
+    'ounces': 'oz',
+    'meters': 'm'
+  }
+  return map[uom?.toLowerCase()] || uom
+}
 </script>
 
 <style scoped>
