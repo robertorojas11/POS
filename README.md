@@ -21,7 +21,7 @@ D:/ERP/POS/
 ├── docker-compose.yml           # Local orchestration for dev services
 ├── backend/                     # Python Flask backend
 │   ├── run.py                   # Dev server entrypoint
-│   ├── seed.py                  # Database table seeding script
+│   ├── bootstrap.py             # First-run setup: roles + first Admin (idempotent)
 │   ├── requirements.txt         # Python package dependencies
 │   ├── Dockerfile               # Backend container containerization
 │   ├── app/                     # Flask MVC source code
@@ -48,22 +48,16 @@ The easiest way to start the entire system (Database, Cache, Backend, and Fronte
 
 1. **Build and start the containers**:
    ```bash
-   docker-compose up --build -d
+   docker compose up --build -d
    ```
 
-2. **Seed the database**:
-   Once the containers are up and running, seed the PostgreSQL database with default products, categories, loyalty customers, and Cashier accounts:
-   ```bash
-   docker-compose exec backend python seed.py
-   ```
+2. **First start**: the backend applies the migrations, creates the roles and, if the database is empty, the first Admin from `ADMIN_USERNAME` / `ADMIN_PASSWORD` in `.env`. There is no sample data: add your own products, categories and employees from the app.
 
 3. **Access the applications**:
    - **Frontend (POS Terminal)**: Open [http://localhost:5173](http://localhost:5173) in your browser.
    - **Backend API Docs/Health Check**: Visit [http://localhost:5000/health](http://localhost:5000/health).
 
-4. **Default Login Credentials**:
-   - **Username**: `admin`
-   - **Password**: `admin` (or `securepassword` if reset)
+4. **Login**: use the Admin from your `.env`. You must change the password at first login. Remove `ADMIN_PASSWORD` from `.env` afterwards.
 
 ---
 
@@ -97,8 +91,9 @@ venv\Scripts\activate
 source venv/bin/activate
 
 pip install -r requirements.txt
-python seed.py
-python run.py
+flask db upgrade   # needs DATABASE_URL, SECRET_KEY, JWT_SECRET_KEY in the environment
+python bootstrap.py
+FLASK_CONFIG=development python run.py
 ```
 *The backend API will run on `http://127.0.0.1:5000`.*
 

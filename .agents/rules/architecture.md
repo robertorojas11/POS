@@ -20,7 +20,7 @@ backend/
 │   └── utils/               # Cross-cutting utilities (decorators, helpers)
 ├── tests/                   # unittest test cases — ONE file per domain
 ├── migrations/              # Alembic auto-generated migrations — NEVER edit manually unless necessary
-├── seed.py                  # Development data seeder
+├── bootstrap.py             # First-run setup (roles + first Admin)
 └── run.py                   # Dev server entry point
 ```
 

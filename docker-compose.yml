@@ -1,11 +1,7 @@
-version: '3.8'
-
 services:
-  # Database Service (PostgreSQL)
   db:
     image: postgres:15-alpine
-    container_name: pos_postgres
-    restart: always
+    restart: unless-stopped
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
@@ -14,66 +10,59 @@ services:
       - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    networks:
-      - pos_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d pos_db"]
+      interval: 5s
+      retries: 10
 
-  # Cache Service (Redis)
   redis:
     image: redis:7-alpine
-    container_name: pos_redis
-    restart: always
+    restart: unless-stopped
     ports:
       - "127.0.0.1:6379:6379"
     volumes:
       - redis_data:/data
-    networks:
-      - pos_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 10
 
-  # Flask Backend Service
   backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    container_name: pos_backend
-    restart: always
+    build: ./backend
+    restart: unless-stopped
     ports:
       - "5000:5000"
     environment:
-      - FLASK_CONFIG=${FLASK_CONFIG:-production}
-      - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD}@db:5432/pos_db
-      - REDIS_URL=redis://redis:6379/0
-      - SECRET_KEY=${SECRET_KEY:?Set SECRET_KEY in .env}
-      - JWT_SECRET_KEY=${JWT_SECRET_KEY:?Set JWT_SECRET_KEY in .env}
-      - CORS_ORIGINS=${CORS_ORIGINS:-*}
-      - BUSINESS_TYPE=${BUSINESS_TYPE:-retail}
-      - BUSINESS_NAME=${BUSINESS_NAME:-ApexPOS}
-      - CURRENCY=${CURRENCY:-USD}
-      - TAX_RATE=${TAX_RATE:-0.0825}
-      - TIMEZONE=${TIMEZONE:-UTC}
+      FLASK_CONFIG: ${FLASK_CONFIG:-production}
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@db:5432/pos_db
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in .env}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?Set JWT_SECRET_KEY in .env}
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+      BUSINESS_TYPE: ${BUSINESS_TYPE:-retail}
+      BUSINESS_NAME: ${BUSINESS_NAME:-ApexPOS}
+      CURRENCY: ${CURRENCY:-USD}
+      TAX_RATE: ${TAX_RATE:-0.0825}
+      TIMEZONE: ${TIMEZONE:-UTC}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
     depends_on:
-      - db
-      - redis
-    networks:
-      - pos_network
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
-  # Vue Frontend Service (Development mode)
   frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    container_name: pos_frontend
-    restart: always
+    build: ./frontend
+    restart: unless-stopped
     ports:
       - "5173:5173"
+    environment:
+      VITE_API_TARGET: http://backend:5000
     depends_on:
       - backend
-    networks:
-      - pos_network
 
 volumes:
   postgres_data:
   redis_data:
-
-networks:
-  pos_network:
-    driver: bridge

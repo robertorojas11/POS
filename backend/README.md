@@ -21,7 +21,7 @@ backend/
 ├── migrations/        # Alembic DB Migration Revisions
 ├── tests/             # PyUnit Integration and Unit Tests
 ├── run.py             # App execution entrypoint
-├── seed.py            # Development database seeder
+├── bootstrap.py       # First-run setup (roles + first Admin)
 └── requirements.txt   # Third-party dependencies
 ```
 
@@ -76,11 +76,8 @@ The `shifts` table uses **UUID** identifiers to avoid predictable sequence guess
    pip install -r requirements.txt
    ```
 
-### Seeding Data
-To populate the database with categories, default users (admin, manager1, cashier1), and products:
-```bash
-python seed.py
-```
+### First-run setup
+After `flask db upgrade`, run `python bootstrap.py`. It creates the roles and, if there are no users, the first Admin from `ADMIN_USERNAME` / `ADMIN_PASSWORD`. It never drops data. There is no sample data.
 
 ### Running Tests
 Execute the PyUnit test discovery to run unit and integration suites:

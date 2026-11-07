@@ -79,9 +79,5 @@ If database structures are modified or need to be initialized on a new terminal 
    ```
 3. This applies the latest migrations (including columns for decimal units of measurement and shift sessions).
 
-### Seeding Initial Data
-To populate the database tables with standard user types, categories, initial products, and test discounts, run:
-```bash
-python seed.py
-```
-*(Executes user type insertions and links default manager and operator credentials, setting admin password to `admin` for local testing)*.
+### First-run setup
+Run `python bootstrap.py` (the Docker image does it on every start). It creates the roles and, on an empty database, the first Admin from `ADMIN_USERNAME` / `ADMIN_PASSWORD`. There is no sample data.
