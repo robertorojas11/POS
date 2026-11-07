@@ -1,164 +1,159 @@
 from datetime import datetime
+from decimal import Decimal
 import uuid
+from flask import current_app
+from sqlalchemy.exc import IntegrityError
 from app.extensions import db
 from app.models.product import Product
 from app.models.inventory import InventoryLog
-from app.models.sale import Sale, SaleItem
+from app.models.sale import Sale, SaleItem, Discount
 from app.models.customer import Customer
+from app.models.shift import Shift
 from app.services.redis_service import RedisService
+from app.utils.validation import to_decimal, money
+
+PAYMENT_METHODS = ('cash', 'card', 'mobile_pay', 'split')
+MANUAL_DISCOUNT_ROLES = ('Admin', 'Manager')
+
 
 class SalesService:
     @staticmethod
     def generate_invoice_number():
         timestamp = datetime.utcnow().strftime('%Y%m%d%H%M%S')
-        unique_suffix = str(uuid.uuid4().hex[:6]).upper()
-        return f"INV-{timestamp}-{unique_suffix}"
+        return f"INV-{timestamp}-{uuid.uuid4().hex[:6].upper()}"
 
     @staticmethod
-    def process_checkout(cashier_id, cart_items, payment_method, customer_id=None, discount=0.00, tax_rate=0.0825, payment_details=None):
+    def _merge_items(cart_items):
+        """Validate cart lines and merge duplicates. Sorted by product id so concurrent
+        checkouts lock rows in the same order (no deadlocks)."""
+        if not isinstance(cart_items, list) or not cart_items:
+            raise ValueError("Cart is empty")
+        merged = {}
+        for item in cart_items:
+            try:
+                product_id = int(item.get('product_id'))
+            except (TypeError, ValueError, AttributeError):
+                raise ValueError("Invalid product in cart")
+            qty = to_decimal(item.get('quantity', 1), 'quantity', allow_zero=False)
+            merged[product_id] = merged.get(product_id, Decimal('0')) + qty
+        return sorted(merged.items())
+
+    @staticmethod
+    def _discount_amount(subtotal, discount, discount_code, user_type):
+        if discount_code:
+            code = db.session.query(Discount).filter_by(
+                code=str(discount_code).strip().upper(), is_active=True).first()
+            if not code:
+                raise ValueError("Invalid or inactive discount code")
+            if code.discount_type == 'percent':
+                return money(subtotal * code.value / 100)
+            return min(subtotal, money(code.value))
+        amount = to_decimal(discount or 0, 'discount')
+        if amount > 0 and user_type not in MANUAL_DISCOUNT_ROLES:
+            raise ValueError("Manual discounts require a Manager or Admin. Use a discount code.")
+        return min(subtotal, money(amount))
+
+    @staticmethod
+    def _split_amounts(payment_method, payment_details, total):
+        zero = Decimal('0.00')
+        if payment_method == 'cash':
+            return total, zero, zero
+        if payment_method == 'card':
+            return zero, total, zero
+        if payment_method == 'mobile_pay':
+            return zero, zero, total
+        details = payment_details or {}
+        cash = money(to_decimal(details.get('cash', 0), 'cash'))
+        card = money(to_decimal(details.get('card', 0), 'card'))
+        mobile = money(to_decimal(details.get('mobile_pay', 0), 'mobile_pay'))
+        if cash + card + mobile != total:
+            raise ValueError(f"Split payments ({cash + card + mobile}) must add up to the total ({total})")
+        return cash, card, mobile
+
+    @staticmethod
+    def process_checkout(cashier_id, cart_items, payment_method, customer_id=None, discount=0,
+                         discount_code=None, payment_details=None, client_ref=None, user_type=None):
         """
-        Executes the atomic checkout operation:
-        1. Validates stock levels.
-        2. Creates Sale and SaleItem records.
-        3. Updates stock quantities.
-        4. Writes audit log to InventoryLogs.
-        5. Computes customer loyalty points.
-        6. Invalidates Redis cache.
-        7. Publishes real-time sale completed event.
+        Atomic checkout. The server owns every number: prices, tax rate and discounts are computed
+        here, never trusted from the client.
+        client_ref makes the call idempotent: a retry (offline queue, double click) returns the
+        sale already created instead of charging twice.
         """
+        if payment_method not in PAYMENT_METHODS:
+            raise ValueError(f"Invalid payment method. Use one of: {', '.join(PAYMENT_METHODS)}")
+
+        if client_ref:
+            existing = db.session.query(Sale).filter_by(client_ref=str(client_ref)).first()
+            if existing:
+                return existing.to_dict()
+
         try:
-            from app.models.shift import Shift
-            
-            # Verify cashier has an active open shift session
+            lines = SalesService._merge_items(cart_items)
+
+            # Locking the shift row also serialises checkout against "close shift"
             active_shift = db.session.query(Shift).filter(
-                Shift.cashier_id == cashier_id,
-                Shift.status == 'open'
-            ).first()
+                Shift.cashier_id == cashier_id, Shift.status == 'open'
+            ).with_for_update().first()
             if not active_shift:
                 raise ValueError("No open cash shift found. Cashier must start a turn session first.")
-                
-            # Generate unique invoice number
+
             invoice_num = SalesService.generate_invoice_number()
-            
-            subtotal = 0.00
-            items_to_save = []
-            products_to_update = []
-            inventory_logs = []
-            
-            # Loop through cart items and process
-            for item in cart_items:
-                product_id = item.get('product_id')
-                qty = item.get('quantity', 1)
-                
-                # Lock row for update to prevent race conditions in multi-register setups
+            subtotal = Decimal('0.00')
+            sale_items = []
+            logs = []
+
+            for product_id, qty in lines:
                 product = db.session.query(Product).filter(Product.id == product_id).with_for_update().first()
-                
                 if not product or not product.is_active:
                     raise ValueError(f"Product ID {product_id} is inactive or does not exist.")
-                    
+                if qty % product.min_sale_qty != 0:
+                    raise ValueError(f"{product.name} must be sold in steps of {product.min_sale_qty} {product.uom}")
                 if product.stock_quantity < qty:
                     raise ValueError(f"Insufficient stock for {product.name}. Required: {qty}, Available: {product.stock_quantity}")
-                
-                # Calculate item pricing
-                unit_price = float(product.price)
-                total_price = unit_price * qty
-                subtotal += total_price
-                
-                # Subtract stock
+
+                line_total = money(product.price * qty)
+                subtotal += line_total
                 product.stock_quantity -= qty
-                products_to_update.append(product)
-                
-                # Keep reference for SaleItem creation
-                items_to_save.append({
-                    'product_id': product.id,
-                    'quantity': qty,
-                    'unit_price': unit_price,
-                    'total_price': total_price
-                })
-                
-                # Add to inventory audit log
-                inventory_logs.append(InventoryLog(
-                    product_id=product.id,
-                    quantity_changed=-qty,
-                    reason='sale',
-                    reference_id=invoice_num,
-                    notes=f"POS Sale. Invoice: {invoice_num}"
-                ))
-            
-            # Subtotal, discount, tax, total calculation
-            discount_val = float(discount)
-            taxable_amount = max(0.0, subtotal - discount_val)
-            tax_val = taxable_amount * tax_rate
-            total_val = taxable_amount + tax_val
-            
-            # Handle Customer loyalty points (1 point per dollar spent)
-            customer = None
+                sale_items.append(SaleItem(product_id=product.id, quantity=qty,
+                                           unit_price=product.price, total_price=line_total))
+                logs.append(InventoryLog(product_id=product.id, quantity_changed=-qty, reason='sale',
+                                         reference_id=invoice_num, notes=f"POS Sale. Invoice: {invoice_num}"))
+
+            discount_val = SalesService._discount_amount(subtotal, discount, discount_code, user_type)
+            taxable = subtotal - discount_val
+            tax_val = money(taxable * current_app.config['TAX_RATE'])
+            total_val = taxable + tax_val
+
             if customer_id:
                 customer = db.session.query(Customer).filter(Customer.id == customer_id).with_for_update().first()
-                if customer:
-                    points_earned = int(total_val)
-                    customer.loyalty_points += points_earned
-            # Calculate payment method splits
-            cash_amount_val = 0.00
-            card_amount_val = 0.00
-            mobile_amount_val = 0.00
-            
-            if payment_method == 'split':
-                if payment_details:
-                    cash_amount_val = float(payment_details.get('cash', 0.00))
-                    card_amount_val = float(payment_details.get('card', 0.00))
-                    mobile_amount_val = float(payment_details.get('mobile_pay', 0.00))
-            elif payment_method == 'cash':
-                cash_amount_val = total_val
-            elif payment_method == 'card':
-                card_amount_val = total_val
-            elif payment_method == 'mobile_pay':
-                mobile_amount_val = total_val
+                if not customer:
+                    raise ValueError("Customer not found")
+                customer.loyalty_points += int(total_val)  # 1 point per currency unit
 
-            # Create Sale object
+            cash, card, mobile = SalesService._split_amounts(payment_method, payment_details, total_val)
+
             sale = Sale(
-                invoice_number=invoice_num,
-                subtotal=subtotal,
-                discount=discount_val,
-                tax=tax_val,
-                total=total_val,
-                payment_method=payment_method,
-                cash_amount=cash_amount_val,
-                card_amount=card_amount_val,
-                mobile_amount=mobile_amount_val,
-                cashier_id=cashier_id,
-                customer_id=customer_id,
-                shift_id=active_shift.id
+                invoice_number=invoice_num, client_ref=client_ref and str(client_ref),
+                subtotal=subtotal, discount=discount_val, tax=tax_val, total=total_val,
+                payment_method=payment_method, cash_amount=cash, card_amount=card, mobile_amount=mobile,
+                cashier_id=cashier_id, customer_id=customer_id, shift_id=active_shift.id,
+                items=sale_items,
             )
             db.session.add(sale)
-            db.session.flush()  # gets sale.id
-            
-            # Add SaleItems
-            for item in items_to_save:
-                sale_item = SaleItem(
-                    sale_id=sale.id,
-                    product_id=item['product_id'],
-                    quantity=item['quantity'],
-                    unit_price=item['unit_price'],
-                    total_price=item['total_price']
-                )
-                db.session.add(sale_item)
-                
-            # Add inventory logs
-            for log in inventory_logs:
-                db.session.add(log)
-                
-            # Commit atomic transaction
+            db.session.add_all(logs)
             db.session.commit()
-            
-            # Post-commit cache and event publishing
-            RedisService.invalidate_products_cache()
-            
-            sale_dict = sale.to_dict()
-            RedisService.publish_sale_event(sale_dict)
-            
-            return sale_dict
-            
-        except Exception as e:
+        except IntegrityError:
+            # Two requests with the same client_ref raced: the other one won, return its sale
             db.session.rollback()
-            raise e
+            existing = client_ref and db.session.query(Sale).filter_by(client_ref=str(client_ref)).first()
+            if existing:
+                return existing.to_dict()
+            raise
+        except Exception:
+            db.session.rollback()
+            raise
+
+        RedisService.invalidate_products_cache(notify=False)  # stock changed; no catalog-wide reload
+        sale_dict = sale.to_dict()
+        RedisService.publish_sale_event(sale_dict)
+        return sale_dict

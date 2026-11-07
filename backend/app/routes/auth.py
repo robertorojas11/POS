@@ -1,54 +1,17 @@
 from flask import Blueprint, request, jsonify
-from flask_jwt_extended import create_access_token, create_refresh_token, jwt_required, get_jwt_identity
+from datetime import datetime
+from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
 from app.extensions import db
 from app.models.user import User, UserType
 from app.utils.permissions import requires_user_type
 import string
-import random
+import secrets
+from app.services.redis_service import RedisService
 
 auth_bp = Blueprint('auth', __name__)
 
-@auth_bp.route('/register', methods=['POST'])
-def register():
-    data = request.get_json() or {}
-    username = data.get('username')
-    email = data.get('email')
-    password = data.get('password')
-    
-    user_type_id = data.get('user_type_id')
-    if not user_type_id:
-        role = str(data.get('role', 'operator')).lower()
-        if role in ('admin', '1'):
-            user_type_id = 1
-        elif role in ('manager', '2'):
-            user_type_id = 2
-        elif role in ('operator', 'cashier', '3'):
-            user_type_id = 3
-        else:
-            user_type_id = 3  # default to operator
-            
-    if not username or not email or not password:
-        return jsonify({"error": "Missing required fields"}), 400
-        
-    if User.query.filter_by(username=username).first():
-        return jsonify({"error": "Username already exists"}), 400
-        
-    if User.query.filter_by(email=email).first():
-        return jsonify({"error": "Email already exists"}), 400
-        
-    # Verify user type exists
-    ut = db.session.get(UserType, user_type_id)
-    if not ut:
-        return jsonify({"error": "Invalid user type ID"}), 400
-        
-    user = User(username=username, email=email, user_type_id=user_type_id)
-    user.set_password(password)
-    
-    db.session.add(user)
-    db.session.commit()
-    
-    return jsonify({"message": "User registered successfully", "user": user.to_dict()}), 201
-
+MAX_LOGIN_FAILURES = 5
+MIN_PASSWORD_LENGTH = 8
 
 @auth_bp.route('/login', methods=['POST'])
 def login():
@@ -59,21 +22,26 @@ def login():
     if not username or not password:
         return jsonify({"error": "Username and password required"}), 400
         
+    throttle_key = f"{request.remote_addr}:{str(username).lower()}"
+    if RedisService.login_failures(throttle_key) >= MAX_LOGIN_FAILURES:
+        return jsonify({"error": "Too many failed attempts. Try again in 5 minutes."}), 429
+
     user = User.query.filter_by(username=username).first()
     
     if not user or not user.check_password(password):
+        RedisService.record_login_failure(throttle_key)
         return jsonify({"error": "Invalid username or password"}), 401
         
     if not user.is_active:
         return jsonify({"error": "Account is inactive"}), 403
         
-    # Generate tokens
+    user.last_login = datetime.utcnow()
+    user.last_login_ip = request.remote_addr
+    db.session.commit()
     access_token = create_access_token(identity=str(user.id))
-    refresh_token = create_refresh_token(identity=str(user.id))
     
     return jsonify({
         "access_token": access_token,
-        "refresh_token": refresh_token,
         "user": user.to_dict()
     }), 200
 
@@ -121,6 +89,8 @@ def register_employee():
     contact_phone = data.get('contact_phone')
     user_type_id = data.get('user_type_id', 3)  # default to 3 (Operator/Cashier)
     store_id = data.get('store_id')
+    if not db.session.get(UserType, user_type_id):
+        return jsonify({"error": "Invalid user type ID"}), 400
     
     if not first_name or not last_name or not email or not store_id:
         return jsonify({"error": "First name, last name, email, and store assignment are required"}), 400
@@ -140,14 +110,13 @@ def register_employee():
     s_code = store.code.strip().lower()
     
     chars = string.ascii_lowercase + string.digits
-    rand_chars = "".join(random.choices(chars, k=2))
-    username = f"{fn}.{ln[0]}.{s_code}{rand_chars}"
-    
-    while User.query.filter_by(username=username).first():
-        rand_chars = "".join(random.choices(chars, k=2))
+    while True:
+        rand_chars = "".join(secrets.choice(chars) for _ in range(2))
         username = f"{fn}.{ln[0]}.{s_code}{rand_chars}"
-        
-    temp_pass = "Temp" + "".join(random.choices(string.digits, k=4))
+        if not User.query.filter_by(username=username).first():
+            break
+
+    temp_pass = secrets.token_urlsafe(9)
     
     # Create employee user
     user = User(
@@ -185,8 +154,8 @@ def change_password():
     data = request.get_json() or {}
     new_password = data.get('new_password')
     
-    if not new_password or len(new_password) < 4:
-        return jsonify({"error": "Password must be at least 4 characters long"}), 400
+    if not new_password or len(new_password) < MIN_PASSWORD_LENGTH:
+        return jsonify({"error": f"Password must be at least {MIN_PASSWORD_LENGTH} characters long"}), 400
         
     user.set_password(new_password)
     user.must_change_password = False
@@ -223,6 +192,8 @@ def update_employee(user_id):
     if 'contact_phone' in data:
         user.contact_phone = data['contact_phone']
     if 'user_type_id' in data:
+        if not db.session.get(UserType, int(data['user_type_id'])):
+            return jsonify({"error": "Invalid user type ID"}), 400
         user.user_type_id = int(data['user_type_id'])
     if 'is_active' in data:
         user.is_active = bool(data['is_active'])
@@ -254,7 +225,9 @@ def delete_employee(user_id):
     current_admin_id = int(get_jwt_identity())
     if user.id == current_admin_id:
         return jsonify({"error": "You cannot delete your own admin account"}), 400
-        
-    db.session.delete(user)
+
+    # Soft delete: sales, shifts and audit columns reference this user
+    user.is_active = False
+    user.updated_by_id = current_admin_id
     db.session.commit()
-    return jsonify({"message": "Employee deleted successfully"}), 200
+    return jsonify({"message": "Employee deactivated successfully"}), 200

@@ -6,6 +6,7 @@ class Sale(db.Model):
     
     id = db.Column(db.Integer, primary_key=True)
     invoice_number = db.Column(db.String(64), unique=True, nullable=False, index=True)
+    client_ref = db.Column(db.String(64), unique=True, nullable=True)  # till-generated id, makes checkout idempotent
     subtotal = db.Column(db.Numeric(10, 2), nullable=False)
     tax = db.Column(db.Numeric(10, 2), default=0.00, nullable=False)
     discount = db.Column(db.Numeric(10, 2), default=0.00, nullable=False)

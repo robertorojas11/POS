@@ -44,6 +44,8 @@ D:/ERP/POS/
 
 The easiest way to start the entire system (Database, Cache, Backend, and Frontend) is using Docker Compose:
 
+0. **Configure the deployment**: copy `.env.example` to `.env` and set the secrets plus `BUSINESS_TYPE`, `TAX_RATE`, `CURRENCY`, `TIMEZONE`. The app will not start without `SECRET_KEY` and `JWT_SECRET_KEY`. See [business profiles](docs/architecture/business_profiles.md).
+
 1. **Build and start the containers**:
    ```bash
    docker-compose up --build -d

@@ -1,20 +1,32 @@
-from flask import Blueprint, jsonify
+from flask import Blueprint, jsonify, request, current_app
 from flask_jwt_extended import jwt_required
 from app.utils.permissions import requires_user_type
 from sqlalchemy import func
-from datetime import datetime, date, timedelta
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from app.extensions import db
 from app.models.sale import Sale, SaleItem
 from app.models.product import Product, Category
 
 report_bp = Blueprint('report', __name__)
 
+
+def _local_day_start_utc():
+    """Start of the store's current day as naive UTC (created_at columns are naive UTC)."""
+    tz = ZoneInfo(current_app.config['TIMEZONE'])
+    local_midnight = datetime.now(tz).replace(hour=0, minute=0, second=0, microsecond=0)
+    return local_midnight.astimezone(timezone.utc).replace(tzinfo=None)
+
+
+def _local_date(column):
+    """SQL expression: the sale's date in the store's time zone (PostgreSQL)."""
+    return func.date(func.timezone(current_app.config['TIMEZONE'], func.timezone('UTC', column)))
+
 @report_bp.route('/dashboard', methods=['GET'])
 @jwt_required()
 @requires_user_type('Admin', 'Manager')
 def dashboard_stats():
-    today = date.today()
-    start_of_day = datetime.combine(today, datetime.min.time())
+    start_of_day = _local_day_start_utc()
     
     # Total sales revenue today
     today_sales_query = db.session.query(func.sum(Sale.total)).filter(Sale.created_at >= start_of_day).scalar()
@@ -66,7 +78,7 @@ def sales_by_category():
         sales_data.append({
             "category": cat_name,
             "revenue": float(total_revenue) if total_revenue else 0.00,
-            "items_sold": int(total_qty) if total_qty else 0
+            "items_sold": float(total_qty) if total_qty else 0
         })
         
     return jsonify(sales_data), 200
@@ -75,7 +87,6 @@ def sales_by_category():
 @jwt_required()
 @requires_user_type('Admin', 'Manager')
 def get_custom_report():
-    from flask import request
     from app.models.user import User
     from app.models.store import Store
     from app.models.sale import SaleItem
@@ -100,8 +111,11 @@ def get_custom_report():
     except ValueError:
         return jsonify({"error": "Invalid date format. Use YYYY-MM-DD."}), 400
         
-    store_id = int(store_id_str) if store_id_str and store_id_str != 'null' and store_id_str != '' else None
-    cashier_id = int(cashier_id_str) if cashier_id_str and cashier_id_str != 'null' and cashier_id_str != '' else None
+    try:
+        store_id = int(store_id_str) if store_id_str not in (None, '', 'null') else None
+        cashier_id = int(cashier_id_str) if cashier_id_str not in (None, '', 'null') else None
+    except ValueError:
+        return jsonify({"error": "store_id and cashier_id must be integers"}), 400
     
     data = []
     
@@ -138,7 +152,7 @@ def get_custom_report():
             
     elif metric == 'day_checkouts':
         results = db.session.query(
-            func.date(Sale.created_at).label('sale_date'),
+            _local_date(Sale.created_at).label('sale_date'),
             func.count(Sale.id),
             func.sum(Sale.subtotal),
             func.sum(Sale.discount),
@@ -209,52 +223,37 @@ def get_custom_report():
             })
             
     elif metric == 'sales_per_month':
+        local_created = func.timezone(current_app.config['TIMEZONE'], func.timezone('UTC', Sale.created_at))
+        year = func.extract('year', local_created)
+        month = func.extract('month', local_created)
         results = db.session.query(
-            Sale.created_at,
-            Sale.subtotal,
-            Sale.discount,
-            Sale.tax,
-            Sale.total
+            year, month,
+            func.count(Sale.id),
+            func.sum(Sale.subtotal),
+            func.sum(Sale.discount),
+            func.sum(Sale.tax),
+            func.sum(Sale.total)
         ).filter(Sale.created_at >= start_date, Sale.created_at <= end_date)
-        
+
+        if store_id or cashier_id:
+            results = results.join(User, User.id == Sale.cashier_id)
         if store_id:
-            results = results.join(User, User.id == Sale.cashier_id).filter(User.store_id == store_id)
+            results = results.filter(User.store_id == store_id)
         if cashier_id:
-            if not store_id:
-                results = results.join(User, User.id == Sale.cashier_id)
             results = results.filter(Sale.cashier_id == cashier_id)
-            
-        results = results.all()
-        
-        from collections import defaultdict
-        monthly_data = defaultdict(lambda: {
-            "sales_count": 0,
-            "subtotal": 0.0,
-            "discount": 0.0,
-            "tax": 0.0,
-            "total": 0.0
-        })
-        
-        for created_at, subtotal, discount, tax, total in results:
-            month_key = created_at.strftime('%Y-%m')
-            monthly_data[month_key]["sales_count"] += 1
-            monthly_data[month_key]["subtotal"] += float(subtotal)
-            monthly_data[month_key]["discount"] += float(discount)
-            monthly_data[month_key]["tax"] += float(tax)
-            monthly_data[month_key]["total"] += float(total)
-            
-        for month_key in sorted(monthly_data.keys()):
-            m_info = monthly_data[month_key]
+
+        for y, m, count, subtotal, discount, tax, total in results.group_by(year, month).order_by(year, month).all():
+            tot_val = float(total or 0)
             data.append({
-                "month": month_key,
-                "sales_count": m_info["sales_count"],
-                "subtotal": round(m_info["subtotal"], 2),
-                "discount": round(m_info["discount"], 2),
-                "tax": round(m_info["tax"], 2),
-                "total": round(m_info["total"], 2),
-                "average_ticket": round(m_info["total"] / m_info["sales_count"], 2) if m_info["sales_count"] > 0 else 0.00
+                "month": f"{int(y):04d}-{int(m):02d}",
+                "sales_count": count,
+                "subtotal": round(float(subtotal or 0), 2),
+                "discount": round(float(discount or 0), 2),
+                "tax": round(float(tax or 0), 2),
+                "total": round(tot_val, 2),
+                "average_ticket": round(tot_val / count, 2) if count > 0 else 0.00
             })
-            
+
     elif metric == 'sales_per_store':
         results = db.session.query(
             Store.name,

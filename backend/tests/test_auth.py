@@ -25,23 +25,28 @@ class AuthTestCase(unittest.TestCase):
         db.drop_all()
         self.app_context.pop()
 
-    def test_user_registration(self):
-        payload = {
-            "username": "cashier1",
-            "email": "cashier1@example.com",
-            "password": "securepassword",
-            "role": "cashier"
-        }
+    def test_public_registration_is_gone(self):
+        # Anyone could POST role=admin here; accounts are now created by Admins via /employees
         response = self.client.post(
             '/api/auth/register',
-            data=json.dumps(payload),
+            data=json.dumps({"username": "x", "email": "x@example.com", "password": "securepassword", "role": "admin"}),
             content_type='application/json'
         )
-        self.assertEqual(response.status_code, 201)
-        data = json.loads(response.data.decode('utf-8'))
-        self.assertEqual(data['user']['username'], 'cashier1')
-        self.assertEqual(data['user']['role'], 'operator') # cashier maps to operator
-        self.assertEqual(data['user']['user_type_id'], 3)
+        self.assertIn(response.status_code, (404, 405))
+        self.assertEqual(User.query.count(), 0)
+
+    def test_deactivated_user_token_is_rejected(self):
+        user = User(username="cashier", email="c@example.com", user_type_id=3)
+        user.set_password("securepassword")
+        db.session.add(user)
+        db.session.commit()
+        res = self.client.post('/api/auth/login', data=json.dumps({"username": "cashier", "password": "securepassword"}),
+                               content_type='application/json')
+        headers = {'Authorization': 'Bearer ' + json.loads(res.data)["access_token"]}
+        self.assertEqual(self.client.get('/api/auth/me', headers=headers).status_code, 200)
+        user.is_active = False
+        db.session.commit()
+        self.assertEqual(self.client.get('/api/auth/me', headers=headers).status_code, 401)
 
     def test_user_login(self):
         # Register a user first
@@ -132,12 +137,10 @@ class AuthTestCase(unittest.TestCase):
         self.assertEqual(updated_store['name'], "East Sucursal Modified")
         self.assertEqual(updated_store['updated_by_id'], admin_id)
 
-        # 6. Delete the Employee
+        # 6. Delete deactivates: sales and audit columns still point at this user
         response = self.client.delete(f'/api/auth/employees/{emp_id}', headers=headers)
         self.assertEqual(response.status_code, 200)
-        # Verify deletion
-        emp_check = db.session.get(User, emp_id)
-        self.assertIsNone(emp_check)
+        self.assertFalse(db.session.get(User, emp_id).is_active)
 
 if __name__ == '__main__':
     unittest.main()

@@ -1,40 +1,43 @@
 from datetime import datetime
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 from app.extensions import db
-from app.models import Sale, Discount, Customer, Shift
+from app.models import Sale, Discount, Customer, Shift, User
 from app.services.sales_service import SalesService
 from app.services.redis_service import RedisService
 from app.utils.permissions import requires_user_type
 
 sale_bp = Blueprint('sale', __name__)
 
+
+def _shift_totals(shift_id):
+    cash, card, mobile = db.session.query(
+        func.coalesce(func.sum(Sale.cash_amount), 0),
+        func.coalesce(func.sum(Sale.card_amount), 0),
+        func.coalesce(func.sum(Sale.mobile_amount), 0),
+    ).filter(Sale.shift_id == shift_id).one()
+    return float(cash), float(card), float(mobile)
+
 @sale_bp.route('/checkout', methods=['POST'])
 @jwt_required()
 def checkout():
     current_user_id = int(get_jwt_identity())
     data = request.get_json() or {}
-    
-    cart_items = data.get('items', [])
-    payment_method = data.get('payment_method', 'cash')
-    payment_details = data.get('payment_details')
-    customer_id = data.get('customer_id')
-    discount = data.get('discount', 0.00)
-    tax_rate = data.get('tax_rate', 0.0825)
-    
-    if not cart_items:
-        return jsonify({"error": "Cart is empty"}), 400
-        
+    user = db.session.get(User, current_user_id)
+
     try:
         sale_result = SalesService.process_checkout(
             cashier_id=current_user_id,
-            cart_items=cart_items,
-            payment_method=payment_method,
-            customer_id=customer_id,
-            discount=discount,
-            tax_rate=tax_rate,
-            payment_details=payment_details
+            cart_items=data.get('items'),
+            payment_method=data.get('payment_method', 'cash'),
+            customer_id=data.get('customer_id'),
+            discount=data.get('discount', 0),
+            discount_code=data.get('discount_code'),
+            payment_details=data.get('payment_details'),
+            client_ref=data.get('client_ref'),
+            user_type=user.user_type.name if user and user.user_type else None,
         )
         return jsonify({
             "message": "Checkout completed successfully",
@@ -42,8 +45,9 @@ def checkout():
         }), 201
     except ValueError as val_err:
         return jsonify({"error": str(val_err)}), 400
-    except Exception as exc:
-        return jsonify({"error": f"Checkout failed: {str(exc)}"}), 500
+    except Exception:
+        current_app.logger.exception("Checkout failed")
+        return jsonify({"error": "Checkout failed. Please try again."}), 500
 
 
 @sale_bp.route('/history', methods=['GET'])
@@ -51,7 +55,7 @@ def checkout():
 @requires_user_type('Admin', 'Manager')
 def sale_history():
     # Fetch recent sales transactions
-    limit = min(int(request.args.get('limit', 50)), 100)
+    limit = min(request.args.get('limit', 50, type=int), 100)
     sales = Sale.query.order_by(Sale.created_at.desc()).limit(limit).all()
     return jsonify([sale.to_dict() for sale in sales]), 200
 
@@ -109,8 +113,7 @@ def handle_customers():
         if phone:
             customer = Customer.query.filter_by(phone=phone).first()
             return jsonify(customer.to_dict() if customer else {}), 200
-        customers = Customer.query.all()
-        return jsonify([c.to_dict() for c in customers]), 200
+        return jsonify({"error": "phone is required"}), 400
         
     elif request.method == 'POST':
         data = request.get_json() or {}
@@ -133,8 +136,11 @@ def handle_customers():
 @sale_bp.route('/discounts', methods=['GET'])
 @jwt_required()
 def get_discounts():
-    discounts = Discount.query.all()
-    return jsonify([d.to_dict() for d in discounts]), 200
+    query = Discount.query
+    user = db.session.get(User, int(get_jwt_identity()))
+    if not user or user.user_type.name not in ('Admin', 'Manager'):
+        query = query.filter_by(is_active=True)
+    return jsonify([d.to_dict() for d in query.all()]), 200
 
 
 @sale_bp.route('/discounts/validate/<code>', methods=['GET'])
@@ -206,8 +212,12 @@ def start_shift():
         
     shift = Shift(cashier_id=current_cashier_id, start_cash=start_cash_val, status='open', created_by_id=current_cashier_id)
     db.session.add(shift)
-    db.session.commit()
-    
+    try:
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({"error": "You already have an active open shift session"}), 400
+
     return jsonify(shift.to_dict()), 201
 
 
@@ -228,31 +238,15 @@ def close_shift():
     except (ValueError, TypeError):
         return jsonify({"error": "Actual cash in drawer must be a valid number"}), 400
         
-    active_shift = Shift.query.filter_by(cashier_id=current_cashier_id, status='open').first()
+    # Lock the shift so a sale in flight finishes before we total it
+    active_shift = Shift.query.filter_by(cashier_id=current_cashier_id, status='open').with_for_update().first()
     if not active_shift:
         return jsonify({"error": "No active open shift session found to close"}), 400
-        
-    # Calculate cash sales during this shift
-    cash_sales_query = db.session.query(func.sum(Sale.cash_amount)).filter(
-        Sale.shift_id == active_shift.id
-    ).scalar()
-    total_cash_sales = float(cash_sales_query) if cash_sales_query else 0.00
-    
-    # Calculate expected cash: opening cash + cash sales
+
+    total_cash_sales, total_card_sales, total_mobile_sales = _shift_totals(active_shift.id)
     expected_cash = float(active_shift.start_cash) + total_cash_sales
     variance = actual_cash_val - expected_cash
-    
-    # Calculate sales by other payment methods
-    card_sales_query = db.session.query(func.sum(Sale.card_amount)).filter(
-        Sale.shift_id == active_shift.id
-    ).scalar()
-    total_card_sales = float(card_sales_query) if card_sales_query else 0.00
-    
-    mobile_sales_query = db.session.query(func.sum(Sale.mobile_amount)).filter(
-        Sale.shift_id == active_shift.id
-    ).scalar()
-    total_mobile_sales = float(mobile_sales_query) if mobile_sales_query else 0.00
-    
+
     # Close the shift session
     active_shift.status = 'closed'
     active_shift.end_time = datetime.utcnow()
@@ -272,7 +266,7 @@ def close_shift():
             "start_cash": float(active_shift.start_cash),
             "total_cash_sales": total_cash_sales,
             "expected_cash": expected_cash,
-            "actual_cash": float(actual_cash),
+            "actual_cash": actual_cash_val,
             "variance": round(variance, 2),
             "other_sales": {
                 "card": total_card_sales,
@@ -292,11 +286,7 @@ def active_shift():
         return jsonify({"active": False, "shift": None}), 200
         
     # Calculate current expected cash on the fly
-    cash_sales_query = db.session.query(func.sum(Sale.cash_amount)).filter(
-        Sale.shift_id == shift.id
-    ).scalar()
-    total_cash_sales = float(cash_sales_query) if cash_sales_query else 0.00
-    
+    total_cash_sales = _shift_totals(shift.id)[0]
     expected_cash = float(shift.start_cash) + total_cash_sales
     
     shift_dict = shift.to_dict()
@@ -322,11 +312,7 @@ def active_shifts_all():
     
     results = []
     for s in active_shifts:
-        cash_sales_query = db.session.query(func.sum(Sale.cash_amount)).filter(
-            Sale.shift_id == s.id
-        ).scalar()
-        total_cash_sales = float(cash_sales_query) if cash_sales_query else 0.00
-        
+        total_cash_sales = _shift_totals(s.id)[0]
         expected_cash = float(s.start_cash) + total_cash_sales
         
         shift_data = s.to_dict()

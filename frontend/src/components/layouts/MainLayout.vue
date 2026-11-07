@@ -118,7 +118,7 @@ onMounted(() => {
   cartStore.initConnection()
   
   if (typeof EventSource !== 'undefined') {
-    const eventSource = new EventSource('/api/products/events')
+    const eventSource = new EventSource(`/api/products/events?token=${encodeURIComponent(authStore.token)}`)
     eventSource.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data)

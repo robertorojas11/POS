@@ -18,5 +18,5 @@ COPY . .
 # Expose backend port
 EXPOSE 5000
 
-# Run development server
-CMD ["python", "run.py"]
+# gthread workers: each open SSE catalog stream holds a thread, not a whole process
+CMD ["gunicorn", "run:app", "--bind", "0.0.0.0:5000", "--worker-class", "gthread", "--workers", "2", "--threads", "50", "--timeout", "0"]

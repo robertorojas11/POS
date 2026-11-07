@@ -1,10 +1,12 @@
 from flask import Blueprint, jsonify, request, Response
 import json
-from flask_jwt_extended import jwt_required, get_jwt_identity
+from flask_jwt_extended import jwt_required, get_jwt_identity, decode_token
+from app import extensions
 from app.models.product import Product, Category
-from app.extensions import db, redis_client
+from app.extensions import db
 from app.utils.permissions import requires_user_type
-from app.services.redis_service import RedisService
+from app.services.redis_service import RedisService, CATALOG_CHANNEL
+from app.utils.validation import to_decimal
 
 product_bp = Blueprint('product', __name__)
 
@@ -14,11 +16,9 @@ def get_products():
     search = request.args.get('search', '')
     category_id = request.args.get('category_id')
     barcode = request.args.get('barcode', '')
-    terminal_id = request.headers.get('X-Terminal-Id') or request.args.get('terminal_id') or 'default'
-    
     is_full_catalog = not any([search, category_id, barcode])
     if is_full_catalog:
-        cached = RedisService.get_cached_products(terminal_id)
+        cached = RedisService.get_cached_products()
         if cached:
             return jsonify(cached), 200
             
@@ -30,7 +30,7 @@ def get_products():
             (Product.sku.ilike(f'%{search}%'))
         )
     if category_id:
-        query = query.filter(Product.category_id == int(category_id))
+        query = query.filter(Product.category_id == request.args.get('category_id', type=int))
     if barcode:
         query = query.filter(Product.barcode == barcode)
         
@@ -38,7 +38,7 @@ def get_products():
     products_list = [p.to_dict() for p in products]
     
     if is_full_catalog:
-        RedisService.set_cached_products(products_list, terminal_id)
+        RedisService.set_cached_products(products_list)
         
     return jsonify(products_list), 200
 
@@ -59,51 +59,50 @@ def get_product_by_barcode(barcode):
     return jsonify(product.to_dict()), 200
 
 
+def _clean_product_fields(data, partial):
+    """Validate and convert product input once. Raises ValueError -> 400. Returns only the fields present."""
+    out = {}
+    for field in ('price', 'cost_price', 'stock_quantity', 'min_stock_level'):
+        if field in data:
+            out[field] = to_decimal(data[field], field)
+    if 'min_sale_qty' in data:
+        out['min_sale_qty'] = to_decimal(data['min_sale_qty'], 'min_sale_qty', allow_zero=False)
+    if 'category_id' in data:
+        cid = data['category_id']
+        out['category_id'] = None if cid in ('', None) else int(cid)
+    if 'barcode' in data:
+        out['barcode'] = data['barcode'] or None
+    if 'is_active' in data:
+        out['is_active'] = bool(data['is_active'])
+    for field in ('name', 'description', 'uom'):
+        if field in data:
+            if field in ('name', 'uom') and not str(data[field] or '').strip():
+                raise ValueError(f"{field} cannot be empty")
+            out[field] = data[field]
+    if not partial:
+        for field in ('sku', 'name', 'price', 'cost_price'):
+            if field not in data or data[field] in (None, ''):
+                raise ValueError("SKU, Name, Price, and Cost Price are required")
+        out['sku'] = data['sku']
+    return out
+
+
 @product_bp.route('', methods=['POST'])
 @jwt_required()
 @requires_user_type('Admin', 'Manager')
 def create_product():
-    # In a real app, verify admin/manager role here
     data = request.get_json() or {}
-    sku = data.get('sku')
-    name = data.get('name')
-    price = data.get('price')
-    cost_price = data.get('cost_price')
-    
-    if not all([sku, name, price, cost_price]):
-        return jsonify({"error": "SKU, Name, Price, and Cost Price are required"}), 400
-        
-    if Product.query.filter_by(sku=sku).first():
+    try:
+        fields = _clean_product_fields(data, partial=False)
+    except (ValueError, TypeError) as err:
+        return jsonify({"error": str(err)}), 400
+
+    if Product.query.filter_by(sku=fields['sku']).first():
         return jsonify({"error": "Product with this SKU already exists"}), 400
-        
-    barcode = data.get('barcode')
-    if barcode == '' or barcode is None:
-        barcode = None
-    else:
-        if Product.query.filter_by(barcode=barcode).first():
-            return jsonify({"error": f"Product with barcode '{barcode}' already exists"}), 400
-        
-    category_id = data.get('category_id')
-    if category_id == '' or category_id is None:
-        category_id = None
-    else:
-        category_id = int(category_id)
-        
-    product = Product(
-        sku=sku,
-        barcode=barcode,
-        name=name,
-        description=data.get('description'),
-        price=float(price),
-        cost_price=float(cost_price),
-        stock_quantity=float(data.get('stock_quantity', 0)),
-        min_stock_level=float(data.get('min_stock_level', 5)),
-        min_sale_qty=float(data.get('min_sale_qty', 1.0)),
-        uom=data.get('uom', 'pieces'),
-        category_id=category_id,
-        created_by_id=int(get_jwt_identity())
-    )
-    
+    if fields.get('barcode') and Product.query.filter_by(barcode=fields['barcode']).first():
+        return jsonify({"error": f"Product with barcode '{fields['barcode']}' already exists"}), 400
+
+    product = Product(created_by_id=int(get_jwt_identity()), **fields)
     db.session.add(product)
     db.session.commit()
     RedisService.invalidate_products_cache()
@@ -116,24 +115,18 @@ def create_product():
 def update_product(product_id):
     product = Product.query.get_or_404(product_id)
     data = request.get_json() or {}
-    
-    for field in ['name', 'barcode', 'description', 'price', 'cost_price', 'stock_quantity', 'min_stock_level', 'category_id', 'is_active', 'uom', 'min_sale_qty']:
-        if field in data:
-            val = data[field]
-            if field == 'barcode' and (val == '' or val is None):
-                val = None
-            elif field == 'barcode' and val is not None:
-                existing = Product.query.filter(Product.barcode == val, Product.id != product_id).first()
-                if existing:
-                    return jsonify({"error": f"Product with barcode '{val}' already exists"}), 400
-            elif field == 'category_id' and (val == '' or val is None):
-                val = None
-            elif field == 'category_id':
-                val = int(val)
-            elif field in ('price', 'cost_price', 'stock_quantity', 'min_stock_level', 'min_sale_qty') and val is not None:
-                val = float(val)
-            setattr(product, field, val)
-            
+    data.pop('sku', None)  # SKU is immutable after creation
+    try:
+        fields = _clean_product_fields(data, partial=True)
+    except (ValueError, TypeError) as err:
+        return jsonify({"error": str(err)}), 400
+
+    barcode = fields.get('barcode')
+    if barcode and Product.query.filter(Product.barcode == barcode, Product.id != product_id).first():
+        return jsonify({"error": f"Product with barcode '{barcode}' already exists"}), 400
+
+    for field, value in fields.items():
+        setattr(product, field, value)
     product.updated_by_id = int(get_jwt_identity())
     db.session.commit()
     RedisService.invalidate_products_cache()
@@ -167,23 +160,31 @@ def create_category():
 
 @product_bp.route('/events', methods=['GET'])
 def events():
+    # EventSource cannot send an Authorization header, so the token comes in the query string
+    try:
+        decode_token(request.args.get('token', ''))
+    except Exception:
+        return jsonify({"error": "Authorization required"}), 401
+
     def event_stream():
-        # Send connection established event
         yield f"data: {json.dumps({'event': 'connected'})}\n\n"
-        
+        pubsub = None
         try:
-            pubsub = redis_client.pubsub()
-            pubsub.subscribe('pos:catalog:events')
-            for message in pubsub.listen():
-                if message['type'] == 'message':
-                    data = message['data'].decode('utf-8') if isinstance(message['data'], bytes) else message['data']
-                    yield f"data: {data}\n\n"
+            pubsub = extensions.redis_client.pubsub()
+            pubsub.subscribe(CATALOG_CHANNEL)
+            while True:
+                # Timeout turns into a keepalive; a dead client raises GeneratorExit on the write
+                message = pubsub.get_message(ignore_subscribe_messages=True, timeout=15)
+                yield f"data: {message['data']}\n\n" if message else ": keepalive\n\n"
         except GeneratorExit:
-            try:
-                pubsub.unsubscribe('pos:catalog:events')
-            except Exception:
-                pass
-        except Exception as e:
+            raise
+        except Exception:
             yield f"data: {json.dumps({'event': 'heartbeat', 'error': 'Redis unavailable'})}\n\n"
-            
+        finally:
+            if pubsub:
+                try:
+                    pubsub.close()
+                except Exception:
+                    pass
+
     return Response(event_stream(), mimetype="text/event-stream")

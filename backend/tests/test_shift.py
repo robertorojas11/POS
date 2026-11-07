@@ -238,7 +238,9 @@ class ShiftTestCase(unittest.TestCase):
 
     def test_product_events_stream(self):
         # 1. Access SSE stream
-        res = self.client.get('/api/products/events')
+        self.assertEqual(self.client.get('/api/products/events').status_code, 401)  # no token
+        token = self.headers['Authorization'].split()[1]
+        res = self.client.get('/api/products/events?token=' + token)
         self.assertEqual(res.status_code, 200)
         self.assertEqual(res.mimetype, 'text/event-stream')
         data = res.get_data(as_text=True)

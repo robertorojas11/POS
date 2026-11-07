@@ -8,7 +8,8 @@ export const useCartStore = defineStore('cart', {
     items: [],
     discount: 0.00,
     appliedDiscount: null,
-    taxRate: 0.0825,
+    taxRate: parseFloat(localStorage.getItem('tax_rate')) || 0,  // server owns the real rate; this is for display/offline
+    businessConfig: JSON.parse(localStorage.getItem('business_config') || 'null'),
     selectedCustomer: null,
     loading: false,
     error: null,
@@ -152,8 +153,10 @@ export const useCartStore = defineStore('cart', {
         payment_method: paymentMethod,
         payment_details: paymentDetails,
         customer_id: this.selectedCustomer?.id || null,
-        discount: this.discount,
-        tax_rate: this.taxRate
+        // The server recomputes discount and tax; a code is sent instead of its amount
+        discount: this.appliedDiscount ? 0 : this.discount,
+        discount_code: this.appliedDiscount?.code || null,
+        client_ref: crypto.randomUUID()  // lets the server ignore a repeated send of the same sale
       }
       
       // If we are offline, save directly to offline queue
@@ -242,7 +245,7 @@ export const useCartStore = defineStore('cart', {
       if (this.isSyncing || this.offlineSalesQueue.length === 0) return
       this.isSyncing = true
       
-      const queue = [...this.offlineSalesQueue]
+      const queue = this.offlineSalesQueue.filter(s => !s.failed)
       let successfulCount = 0
       
       for (const sale of queue) {
@@ -252,15 +255,16 @@ export const useCartStore = defineStore('cart', {
           await dbDelete('sales_queue', sale.id)
           successfulCount++
         } catch (err) {
-          const isNetworkError = !err.response || err.message === 'Network Error' || err.code === 'ERR_NETWORK'
-          if (isNetworkError) {
-            console.error('Network still offline, halting sync.', err)
+          const status = err.response?.status
+          // Offline, server down, or logged out (401/403): keep the sale and retry later
+          if (!err.response || status === 401 || status === 403 || status >= 500) {
+            console.error('Cannot sync right now, will retry.', err)
             break
-          } else {
-            console.error(`Invalid transaction skipped: ${sale.invoice_number}`, err.response?.data?.error)
-            this.offlineSalesQueue = this.offlineSalesQueue.filter(s => s.id !== sale.id)
-            await dbDelete('sales_queue', sale.id)
           }
+          // Server rejected the sale (e.g. stock): the customer already paid, so keep it for a manager
+          sale.sync_error = err.response?.data?.error || 'Rejected by server'
+          sale.failed = true
+          await dbPut('sales_queue', sale)
         }
       }
       
@@ -331,7 +335,19 @@ export const useCartStore = defineStore('cart', {
         this.loading = false
       }
     },
+    async loadConfig() {
+      try {
+        const { data } = await axios.get('/api/config')
+        this.businessConfig = data
+        this.taxRate = data.tax_rate
+        localStorage.setItem('business_config', JSON.stringify(data))
+        localStorage.setItem('tax_rate', String(data.tax_rate))
+      } catch (err) {
+        console.warn('Could not load business config, using cached values.', err)
+      }
+    },
     initConnection() {
+      this.loadConfig()
       this.isOnline = navigator.onLine
       
       window.addEventListener('online', () => {

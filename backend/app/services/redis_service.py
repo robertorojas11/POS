@@ -1,21 +1,29 @@
 import json
-from app.extensions import redis_client
+from app import extensions
+
+CATALOG_KEY = "pos:products:cache"
+CATALOG_CHANNEL = "pos:catalog:events"
+
+
+def _r():
+    return extensions.redis_client
+
 
 class RedisService:
+    # Redis is a cache: every method fails soft so a Redis outage never blocks a sale.
+
     @staticmethod
-    def set_cached_products(products_list, terminal_id="default"):
-        """Cache the list of active products for rapid autocomplete search."""
+    def set_cached_products(products_list):
         try:
-            redis_client.set(f"pos:products:cache:{terminal_id}", json.dumps(products_list), ex=600)  # cache for 10 minutes
+            _r().set(CATALOG_KEY, json.dumps(products_list), ex=600)
             return True
         except Exception:
             return False
 
     @staticmethod
-    def get_cached_products(terminal_id="default"):
-        """Retrieve cached active products."""
+    def get_cached_products():
         try:
-            data = redis_client.get(f"pos:products:cache:{terminal_id}")
+            data = _r().get(CATALOG_KEY)
             if data:
                 return json.loads(data)
         except Exception:
@@ -23,71 +31,64 @@ class RedisService:
         return None
 
     @staticmethod
-    def invalidate_products_cache(terminal_id=None):
-        """Delete products cache when product details or stocks change."""
+    def invalidate_products_cache(notify=True):
+        """Drop the catalog cache. notify=True also nudges every till to reload (catalog edits, not sales)."""
         try:
-            if terminal_id:
-                redis_client.delete(f"pos:products:cache:{terminal_id}")
-            else:
-                pattern = "pos:products:cache:*"
-                keys = redis_client.keys(pattern)
-                if keys:
-                    redis_client.delete(*keys)
-            # Trigger catalog reload event for SSE client stream
-            RedisService.publish_catalog_invalidate()
+            _r().delete(CATALOG_KEY)
+            if notify:
+                _r().publish(CATALOG_CHANNEL, json.dumps({"event": "invalidate"}))
         except Exception:
             pass
 
     @staticmethod
-    def publish_catalog_invalidate():
-        """Publish a catalog invalidate event for active client devices."""
-        try:
-            redis_client.publish("pos:catalog:events", json.dumps({"event": "invalidate"}))
-            return True
-        except Exception:
-            return False
-
-    @staticmethod
     def save_suspended_cart(cashier_id, cart_id, cart_data):
-        """Suspend a transaction/cart (hold cart) to recall it later."""
         try:
-            key = f"pos:cashier:{cashier_id}:suspended:{cart_id}"
-            redis_client.set(key, json.dumps(cart_data), ex=86400)  # expires in 24 hours
+            _r().set(f"pos:cashier:{cashier_id}:suspended:{cart_id}", json.dumps(cart_data), ex=86400)
             return True
         except Exception:
             return False
 
     @staticmethod
     def get_suspended_carts(cashier_id):
-        """Retrieve all suspended carts for a cashier."""
         carts = {}
         try:
-            pattern = f"pos:cashier:{cashier_id}:suspended:*"
-            keys = redis_client.keys(pattern)
-            for key in keys:
-                cart_id = key.split(":")[-1]
-                data = redis_client.get(key)
+            for key in _r().scan_iter(f"pos:cashier:{cashier_id}:suspended:*"):
+                data = _r().get(key)
                 if data:
-                    carts[cart_id] = json.loads(data)
+                    carts[key.split(":")[-1]] = json.loads(data)
         except Exception:
             pass
         return carts
 
     @staticmethod
     def delete_suspended_cart(cashier_id, cart_id):
-        """Delete a suspended cart after it has been retrieved/resumed."""
         try:
-            key = f"pos:cashier:{cashier_id}:suspended:{cart_id}"
-            redis_client.delete(key)
+            _r().delete(f"pos:cashier:{cashier_id}:suspended:{cart_id}")
             return True
         except Exception:
             return False
 
     @staticmethod
     def publish_sale_event(sale_data):
-        """Publish a completed sale event for real-time integrations (e.g. screens or receipt printers)."""
         try:
-            redis_client.publish("pos:sales:events", json.dumps(sale_data))
+            _r().publish("pos:sales:events", json.dumps(sale_data))
             return True
         except Exception:
             return False
+
+    # Login throttle: fail-open if Redis is down (a cache outage must not lock everyone out)
+    @staticmethod
+    def login_failures(key):
+        try:
+            return int(_r().get(f"pos:login_fail:{key}") or 0)
+        except Exception:
+            return 0
+
+    @staticmethod
+    def record_login_failure(key):
+        try:
+            k = f"pos:login_fail:{key}"
+            if _r().incr(k) == 1:
+                _r().expire(k, 300)
+        except Exception:
+            pass

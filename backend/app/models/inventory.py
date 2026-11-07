@@ -6,7 +6,7 @@ class InventoryLog(db.Model):
     
     id = db.Column(db.Integer, primary_key=True)
     product_id = db.Column(db.Integer, db.ForeignKey('products.id'), nullable=False)
-    quantity_changed = db.Column(db.Integer, nullable=False)  # positive for stock-in, negative for stock-out/sale
+    quantity_changed = db.Column(db.Numeric(10, 3), nullable=False)  # positive for stock-in, negative for stock-out/sale
     reason = db.Column(db.String(64), nullable=False)  # 'sale', 'restock', 'adjustment', 'damage', 'return'
     reference_id = db.Column(db.String(64))  # Sale invoice number, PO number, or custom ID
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
@@ -25,7 +25,7 @@ class InventoryLog(db.Model):
             'id': self.id,
             'product_id': self.product_id,
             'product_name': self.product.name if self.product else None,
-            'quantity_changed': self.quantity_changed,
+            'quantity_changed': float(self.quantity_changed),
             'reason': self.reason,
             'reference_id': self.reference_id,
             'created_at': self.created_at.isoformat(),

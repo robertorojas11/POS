@@ -1,9 +1,15 @@
 from datetime import datetime
 import uuid
+from sqlalchemy import Index, text
 from app.extensions import db
 
 class Shift(db.Model):
     __tablename__ = 'shifts'
+    # One open shift per cashier, enforced by the database (a double click cannot create two)
+    __table_args__ = (
+        Index('uq_one_open_shift_per_cashier', 'cashier_id', unique=True,
+              postgresql_where=text("status = 'open'"), sqlite_where=text("status = 'open'")),
+    )
     
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     cashier_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
